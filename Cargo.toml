@@ -1,0 +1,18 @@
+[package]
+name = "xen_fuzzer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libafl = {git = "https://github.com/AFLplusplus/LibAFL"}
+libafl_bolts = {git = "https://github.com/AFLplusplus/LibAFL"}
+libafl_qemu = { git = "https://github.com/AFLplusplus/LibAFL", features = [
+   "aarch64",
+   "systemmode",
+ ], default-features = false }
+libafl_targets = { git = "https://github.com/AFLplusplus/LibAFL" }
+
+env_logger = "0.11.5"
+
+[build-dependencies]
+libafl_qemu_build = { git = "https://github.com/AFLplusplus/LibAFL" }
