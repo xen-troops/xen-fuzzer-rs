@@ -82,7 +82,7 @@ pub fn fuzz() {
         );
 
         let emu = Emulator::builder()
-            .qemu_cli(args)
+            .qemu_parameters(args)
             .modules(modules)
             .build()?;
 
@@ -91,7 +91,7 @@ pub fn fuzz() {
 
         // The wrapped harness function, calling out to the LLVM-style harness
         let mut harness =
-            |emulator: &mut Emulator<_, _, _, _, _>, state: &mut _, input: &BytesInput| unsafe {
+            |emulator: &mut Emulator<_, _, _, _, _, _, _>, state: &mut _, input: &BytesInput| unsafe {
                 emulator.run(state, input).unwrap().try_into().unwrap()
             };
 
