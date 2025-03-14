@@ -1,0 +1,57 @@
+[env]
+PROFILE = { value = "release", condition = { env_not_set = ["PROFILE"] } }
+WORKING_DIR = "${CARGO_MAKE_WORKING_DIRECTORY}"
+TARGET_DIR = "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}"
+
+XEN_REV = {value = "master", condition = {env_not_set =["XEN_REV"]}}
+XEN_URL = {value = "https://xenbits.xen.org/git-http/xen.git", condition = { env_not_set =["XEN_URL"]}}
+XEN_DIR = {value = "${TARGET_DIR}/xen", condition = {env_not_set =["XEN_DIR"]}}
+XEN_TARGET_ARCH = "arm64"
+XTF_REV = {value = "libafl-wip", condition = {env_not_set =["XTF_REV"]}}
+XTF_URL = {value = "https://github.com/lorc/xtf.git", condition = { env_not_set =["XTF_URL"]}}
+XTF_DIR = {value = "${TARGET_DIR}/xtf", condition = {env_not_set =["XTF_DIR"]}}
+
+CROSS_COMPILE = "aarch64-linux-gnu-"
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.fetch_xen]
+condition = {files_not_exist = ["${XEN_DIR}/.git"]}
+command = "git"
+args = ["clone", "${XEN_URL}", "-n", "${XEN_DIR}" ]
+
+[tasks.checkout_xen]
+dependencies = ["fetch_xen"]
+command = "git"
+args = [ "-C",  "${XEN_DIR}" , "checkout", "${XEN_REV}"]
+
+[tasks.build_xen]
+dependencies = ["checkout_xen"]
+command = "make"
+args = ["-C", "${XEN_DIR}/xen"]
+
+[tasks.fetch_xtf]
+condition = {files_not_exist = ["${XTF_DIR}/.git"]}
+command = "git"
+args = ["clone", "${XTF_URL}", "-n", "${XTF_DIR}" ]
+
+[tasks.checkout_xtf]
+dependencies = ["fetch_xtf"]
+command = "git"
+args = [ "-C",  "${XTF_DIR}" , "checkout", "${XTF_REV}"]
+
+[tasks.build_xtf]
+dependencies = ["checkout_xtf"]
+command = "make"
+args = ["-C", "${XTF_DIR}",
+       "ARCH=${XEN_TARGET_ARCH}",
+       "CONFIG_GICV2=y",
+       "CONFIG_GICV2_DIST_ADDRESS=0x0000000008000000",
+       "CONFIG_GICV2_CPU_ADDRESS=0x0000000008010000",
+       "CONFIG_LIBAFL=y"]
+
+[tasks.run_vgic]
+dependencies = ["build_xen", "build_xtf"]
+
