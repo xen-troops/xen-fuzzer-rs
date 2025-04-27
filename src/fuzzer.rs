@@ -17,7 +17,7 @@ use libafl::{
     monitors::MultiMonitor,
     mutators::{
         I2SRandReplaceBinonly,
-        {havoc_mutations, scheduled::StdScheduledMutator},
+        {havoc_mutations, scheduled::HavocScheduledMutator},
     },
     observers::{CanTrack, HitcountsMapObserver, TimeObserver, VariableMapObserver},
     schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
@@ -284,13 +284,13 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     println!("We imported {} inputs from disk.", state.corpus().count());
 
     // a CmpLog-based mutational stage
-    let i2s = StdMutationalStage::new(StdScheduledMutator::new(tuple_list!(
+    let i2s = StdMutationalStage::new(HavocScheduledMutator::new(tuple_list!(
         I2SRandReplaceBinonly::new()
     )));
 
     // Setup an havoc mutator with a mutational stage
     let tracing = ShadowTracingStage::new();
-    let mutator = StdScheduledMutator::new(havoc_mutations());
+    let mutator = HavocScheduledMutator::new(havoc_mutations());
     let mut stages = tuple_list!(tracing, i2s, StdMutationalStage::new(mutator),);
 
     let test_time = cli.test_time.map(|x| Duration::from_secs(x));
