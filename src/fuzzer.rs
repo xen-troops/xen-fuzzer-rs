@@ -1,45 +1,57 @@
 //! A fuzzer using qemu in systemmode for binary-only coverage of Xen hypervisor
 
-use core::{ptr::addr_of_mut, time::Duration};
+mod cmd_serializer;
+mod generic_hypercall;
+mod hyp_base_input;
+mod hyp_evtchn;
+mod hyp_list_input;
+mod hyp_macro;
+mod xen_bindings;
+mod xencov;
+mod xencov_feedback;
+mod xencov_observer;
+
+use core::num::NonZero;
+use core::time::Duration;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{env, fs, path::PathBuf, process, time::Instant};
 
 use libafl_bolts::os::CTRL_C_EXIT;
 
 use libafl::{
-    corpus::{Corpus, InMemoryOnDiskCorpus, OnDiskCorpus},
+    corpus::{Corpus, InMemoryCorpus, OnDiskCorpus},
     events::{EventRestarter, SimpleRestartingEventManager},
     executors::ShadowExecutor,
     feedback_or, feedback_or_fast,
-    feedbacks::{CrashFeedback, MaxMapFeedback, TimeFeedback, TimeoutFeedback},
+    feedbacks::{CrashFeedback, TimeFeedback, TimeoutFeedback},
     fuzzer::{Fuzzer, StdFuzzer},
-    inputs::BytesInput,
+    inputs::{BytesInput, LastEntryMutator, RandomEntryMutator},
     monitors::MultiMonitor,
-    mutators::{
-        I2SRandReplaceBinonly,
-        {havoc_mutations, scheduled::HavocScheduledMutator},
-    },
-    observers::{CanTrack, HitcountsMapObserver, TimeObserver, VariableMapObserver},
-    schedulers::{IndexesLenTimeMinimizerScheduler, QueueScheduler},
+    mutators::scheduled::HavocScheduledMutator,
+    observers::TimeObserver,
+    schedulers::QueueScheduler,
     stages::{ShadowTracingStage, StdMutationalStage},
     state::{HasCorpus, HasSolutions, StdState},
     Error,
 };
 use libafl_bolts::{
     current_nanos,
-    ownedref::OwnedMutSlice,
     rands::StdRand,
     shmem::{ShMemProvider, StdShMemProvider},
-    tuples::tuple_list,
+    tuples::{tuple_list, Merge},
 };
 use libafl_qemu::{
     emu::Emulator,
     executor::QemuExecutor,
-    modules::{cmplog::CmpLogObserver, edges::StdEdgeCoverageModule, CmpLogModule},
+    modules::{cmplog::CmpLogObserver, CmpLogModule},
 };
-use libafl_targets::{edges_map_mut_ptr, EDGES_MAP_DEFAULT_SIZE, MAX_EDGES_FOUND};
+
 use std::io::{self, Write};
 
+use crate::fuzzer::{
+    hyp_base_input::{HypercallAllMutator, HypercallOneMutator},
+    hyp_list_input::{hyp_input_list_mutators, HypInputList, HypInputListMappingMutator},
+};
 use crate::Cli;
 use crate::Commands;
 
@@ -64,6 +76,11 @@ fn create_args(cli: &Cli) -> Vec<String> {
         Some(Commands::Hypercalls {}) => {
             l_fuzzer_path =
                 "target/xtf/tests/arm-hypercall-fuzzer/test-mmu64le-arm-hypercall-fuzzer"
+                    .to_string()
+        }
+        Some(Commands::Structured {}) => {
+            l_fuzzer_path =
+                "target/xtf/tests/arm-structured-fuzzer/test-mmu64le-arm-structured-fuzzer"
                     .to_string()
         }
         None => {
@@ -181,24 +198,8 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     let qemu_args = create_args(&cli);
     println!("QEMU args = {:?}", qemu_args);
 
-    // Create an observation channel using the coverage map
-    let mut edges_observer = unsafe {
-        HitcountsMapObserver::new(VariableMapObserver::from_mut_slice(
-            "edges",
-            OwnedMutSlice::from_raw_parts_mut(edges_map_mut_ptr(), EDGES_MAP_DEFAULT_SIZE),
-            addr_of_mut!(MAX_EDGES_FOUND),
-        ))
-        .track_indices()
-    };
-
     // Choose modules to use
-    let modules = tuple_list!(
-        StdEdgeCoverageModule::builder()
-            .map_observer(edges_observer.as_mut())
-            .build()
-            .expect("Failed to build StdEdgeCoverageModule"),
-        CmpLogModule::default(),
-    );
+    let modules = tuple_list!(CmpLogModule::default(),);
 
     let emu = Emulator::builder()
         .qemu_parameters(qemu_args)
@@ -210,10 +211,11 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     println!("Devices = {:?}", devices);
 
     // The wrapped harness function, calling out to the LLVM-style harness
-    let mut harness =
-        |emulator: &mut Emulator<_, _, _, _, _, _, _>, state: &mut _, input: &BytesInput| unsafe {
-            emulator.run(state, input).unwrap().try_into().unwrap()
-        };
+    let mut harness = |emulator: &mut Emulator<_, _, _, _, _, _, _>,
+                       state: &mut _,
+                       input: &HypInputList| unsafe {
+        emulator.run(state, input).unwrap().try_into().unwrap()
+    };
 
     // Create an observation channel to keep track of the execution time
     let time_observer = TimeObserver::new("time");
@@ -221,13 +223,15 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     // Create a cmplog observer
     let cmplog_observer = CmpLogObserver::new("cmplog", true);
 
+    // Create XenCov observer
+    let xencov_observer = xencov_observer::XenCovObserver::new("xencov");
     // Feedback to rate the interestingness of an input
     // This one is composed by two Feedbacks in OR
     let mut feedback = feedback_or!(
-        // New maximization map feedback linked to the edges observer and the feedback state
-        MaxMapFeedback::new(&edges_observer),
         // Time feedback, this one does not need a feedback state
-        TimeFeedback::new(&time_observer)
+        TimeFeedback::new(&time_observer),
+        // XenCov MCDC observer
+        xencov_feedback::XenCovFeedback::new(&xencov_observer)
     );
 
     // A feedback to choose if an input is a solution or not
@@ -239,7 +243,8 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
             // RNG
             StdRand::with_seed(current_nanos()),
             // Corpus that will be evolved, we keep it in memory for performance
-            InMemoryOnDiskCorpus::new("corpus_gen").unwrap(),
+            //            InMemoryOnDiskCorpus::new("corpus_gen").unwrap(),
+            InMemoryCorpus::new(),
             // Corpus in which we store solutions (crashes in this example),
             // on disk so the user can get them after stopping the fuzzer
             OnDiskCorpus::new(objective_dir.clone()).unwrap(),
@@ -253,7 +258,7 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     });
 
     // A minimization+queue policy to get testcasess from the corpus
-    let scheduler = IndexesLenTimeMinimizerScheduler::new(&edges_observer, QueueScheduler::new());
+    let scheduler = QueueScheduler::new();
 
     // A fuzzer with feedbacks and a corpus scheduler
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
@@ -262,7 +267,7 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     let mut executor = QemuExecutor::new(
         emu,
         &mut harness,
-        tuple_list!(edges_observer, time_observer),
+        tuple_list!(time_observer, xencov_observer),
         &mut fuzzer,
         &mut state,
         &mut mgr,
@@ -274,24 +279,33 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
     executor.break_on_timeout();
 
     let mut executor = ShadowExecutor::new(executor, tuple_list!(cmplog_observer));
+    // Safety: obviously, 4 is larger than 0
+    let mut generator = hyp_list_input::HypercallListGenerator::new(NonZero::new(4).unwrap());
 
     state
-        .load_initial_inputs(&mut fuzzer, &mut executor, &mut mgr, &corpus_dirs)
-        .unwrap_or_else(|_| {
-            println!("Failed to load initial corpus at {:?}", &corpus_dirs);
+        .generate_initial_inputs(&mut fuzzer, &mut executor, &mut generator, &mut mgr, 8)
+        .unwrap_or_else(|e| {
+            println!(
+                "Failed to load initial corpus at {:?} - {:?}",
+                &corpus_dirs, e
+            );
             process::exit(1);
         });
     println!("We imported {} inputs from disk.", state.corpus().count());
 
-    // a CmpLog-based mutational stage
-    let i2s = StdMutationalStage::new(HavocScheduledMutator::new(tuple_list!(
-        I2SRandReplaceBinonly::new()
-    )));
-
-    // Setup an havoc mutator with a mutational stage
     let tracing = ShadowTracingStage::new();
-    let mutator = HavocScheduledMutator::new(havoc_mutations());
-    let mut stages = tuple_list!(tracing, i2s, StdMutationalStage::new(mutator),);
+    let mapped_mutators = tuple_list!(
+        HypInputListMappingMutator::new(LastEntryMutator::new(HypercallAllMutator {})),
+        HypInputListMappingMutator::new(LastEntryMutator::new(HypercallOneMutator {})),
+        HypInputListMappingMutator::new(RandomEntryMutator::new(HypercallAllMutator {})),
+        HypInputListMappingMutator::new(RandomEntryMutator::new(HypercallOneMutator {})),
+    );
+    let mutators = hyp_input_list_mutators().merge(mapped_mutators);
+    let scheduler = HavocScheduledMutator::new(mutators);
+    let mut stages = tuple_list!(
+        tracing, //,  i2s
+        StdMutationalStage::new(scheduler)
+    );
 
     let test_time = cli.test_time.map(|x| Duration::from_secs(x));
     while test_time.map_or(true, |x| running_time.elapsed() < x) {

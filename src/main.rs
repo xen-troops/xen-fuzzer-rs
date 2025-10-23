@@ -32,6 +32,8 @@ enum Commands {
     Vgic {},
     /// Run hypercalls fuzzer
     Hypercalls {},
+    /// Run structured fuzzer
+    Structured {},
 }
 
 #[cfg(target_os = "linux")]
