@@ -4,6 +4,7 @@ mod cmd_serializer;
 mod generic_hypercall;
 mod hyp_base_input;
 mod hyp_evtchn;
+mod hyp_sysctl;
 mod hyp_list_input;
 mod hyp_macro;
 mod xen_bindings;

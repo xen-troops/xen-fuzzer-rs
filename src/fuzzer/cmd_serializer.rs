@@ -3,6 +3,7 @@ enum CmdTags {
     SetHvcArgVal, // arg no, value
     SetHvcArgBuf, // arn no, buffer
     Hvc,          // perform hvc #op
+    FixupBufPtr,  // fixup pointer to data buffer
 }
 
 impl From<CmdTags> for u8 {
@@ -12,6 +13,7 @@ impl From<CmdTags> for u8 {
             CmdTags::SetHvcArgVal => 1,
             CmdTags::SetHvcArgBuf => 2,
             CmdTags::Hvc => 3,
+	    CmdTags::FixupBufPtr => 4,
         }
     }
 }
@@ -45,6 +47,13 @@ impl CmdSerializer {
     pub fn emit_hvc(&mut self, op: u64) {
         self.data.push(CmdTags::Hvc.into());
         self.emit_u64(op);
+    }
+
+    /// In buffer for arg <reg_id>, update buf ptr at <field_offset>
+    pub fn emit_fixup_buf_ptr(&mut self, reg_id: u8, field_offset: usize) {
+        self.data.push(CmdTags::FixupBufPtr.into());
+        self.data.push(reg_id);
+        self.emit_u64(field_offset as u64);
     }
 }
 

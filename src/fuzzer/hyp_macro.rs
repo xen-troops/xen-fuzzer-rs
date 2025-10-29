@@ -34,10 +34,10 @@
 /// Will transorm
 /// hypercall! (name, id, fields)
 /// into
-/// fn mk_name () -> GenericHypercallDef {
+/// fn mk_{name} () -> GenericHypercallDef {
 ///     GenericHypercallDef {
-///         id: id,
-///         args: fields
+///         id: {id},
+///         args:  vec![{fields}]
 ///     }
 /// }
 ///
@@ -69,5 +69,29 @@ macro_rules! hypercall_arg {
 		}
 	    ),+
 	])
+    };
+
+    ($num:expr, complex_struct $name:ident, $($fields:expr),+) => {
+	HypercallArg::mk_buffer($num, size_of::<$name>(), vec![$($fields),+])
+    };
+}
+
+#[macro_export]
+macro_rules! hypercall_struct_field {
+    (var $struct:ident : $($field:ident).+ ($type:ident))=>{
+	paste! {
+	    HypercallBufferField::[<mk_ $type>] (offset_of!($struct, $($field).+))
+	}
+    };
+
+    (const $struct:ident : $($field:ident).+ ($type:ident) = $val:expr) => {
+	paste! {
+	    HypercallBufferField::[<mk_ $type _const>] (offset_of!($struct, $($field).+), $val)
+	}
+    };
+
+    (buf_with_size $struct:ident : $($field:ident).+  => $($size_field:ident).+ ) => {
+	HypercallBufferField::mk_buffer_with_size(offset_of!($struct, $($field).+),
+						  offset_of!($struct, $($size_field).+))
     };
 }

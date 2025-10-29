@@ -7,12 +7,15 @@ use crate::fuzzer::{
 
 use libafl::{
     corpus::CorpusId,
-    inputs::{HasTargetBytes, Input},
-    mutators::{MutationResult, Mutator},
-    state::HasRand,
+    inputs::{BytesInput, HasTargetBytes, Input},
+    mutators::{
+        havoc_mutations_no_crossover, scheduled::HavocScheduledMutator,
+        MutationResult, Mutator,
+    },
+    state::{HasRand, HasMaxSize},
     Error, SerdeAny,
 };
-use libafl_bolts::{rands::Rand, Named};
+use libafl_bolts::{rands::Rand, HasLen, Named};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -77,10 +80,12 @@ pub struct HypercallBufferArg {
 }
 
 impl HypercallBufferArg {
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> (Vec<u8>, Vec<usize>) {
         let mut data: Vec<u8> = vec![0; self.size];
-
+	let mut fixups: Vec<usize> = vec![];
         for f in &self.fields {
+            // TODO: Generate this with macro?
+	    // TODO: Or move to impl
             match &f.data {
                 HypercallBufferFieldData::DomId(d) => {
                     Self::splice(&mut data, f.offset, d.val.to_le_bytes().as_slice())
@@ -88,27 +93,61 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::EvtchnPort(e) => {
                     Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
                 }
+                HypercallBufferFieldData::U8(u) => {
+                    Self::splice(&mut data, f.offset, u.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::U16(u) => {
+                    Self::splice(&mut data, f.offset, u.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::U32(u) => {
+                    Self::splice(&mut data, f.offset, u.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::U64(u) => {
+                    Self::splice(&mut data, f.offset, u.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::U32Const(c) => {
+                    Self::splice(&mut data, f.offset, c.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::Buf(b) => {
+                    let buf_offset = data.len();
+		    fixups.push(f.offset);
+                    data.extend(&b.data.target_bytes());
+                    Self::splice(&mut data, f.offset, buf_offset.to_le_bytes().as_slice());
+                    if let Some(size_offset) = b.size_offset {
+                        Self::splice(
+                            &mut data,
+                            size_offset,
+                            (b.data.len() as u32).to_le_bytes().as_slice(),
+                        )
+                    }
+                }
             }
         }
-
-        data
+//	dbg!(self.size, data.len());
+        (data, fixups)
     }
 
     pub fn randomize_all<S>(&mut self, state: &mut S)
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
         for f in &mut self.fields {
             match &mut f.data {
                 HypercallBufferFieldData::DomId(d) => d.randomize(state),
                 HypercallBufferFieldData::EvtchnPort(e) => e.randomize(state),
+                HypercallBufferFieldData::U8(u) => u.randomize(state),
+                HypercallBufferFieldData::U16(u) => u.randomize(state),
+                HypercallBufferFieldData::U32(u) => u.randomize(state),
+                HypercallBufferFieldData::U64(u) => u.randomize(state),
+                HypercallBufferFieldData::U32Const(_) => (),
+                HypercallBufferFieldData::Buf(b) => b.randomize(state),
             }
         }
     }
 
     pub fn randomize_one<S>(&mut self, state: &mut S) -> MutationResult
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
         if let Some(f) = state.rand_mut().choose(&mut self.fields) {
             match &mut f.data {
@@ -118,6 +157,27 @@ impl HypercallBufferArg {
                 }
                 HypercallBufferFieldData::EvtchnPort(e) => {
                     e.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::U8(u) => {
+                    u.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::U16(u) => {
+                    u.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::U32(u) => {
+                    u.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::U64(u) => {
+                    u.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::U32Const(_) => MutationResult::Skipped,
+                HypercallBufferFieldData::Buf(b) => {
+                    b.randomize(state);
                     MutationResult::Mutated
                 }
             }
@@ -147,6 +207,12 @@ pub struct HypercallVariableArg {
 pub enum HypercallBufferFieldData {
     DomId(HypercallBufferDomIdField),
     EvtchnPort(HypercallBufferEvtchnPortField),
+    U8(HypercallBufferU8Field),
+    U16(HypercallBufferU16Field),
+    U32(HypercallBufferU32Field),
+    U64(HypercallBufferU64Field),
+    U32Const(HypercallBufferU32ConstField),
+    Buf(HypercallBufferBufferField),
     //    String,
     //    Buf(Cow<'static, [HypercallBufferField]>),
 }
@@ -171,6 +237,46 @@ impl HypercallBufferField {
         Self {
             offset,
             data: HypercallBufferFieldData::EvtchnPort(HypercallBufferEvtchnPortField { val: 0 }),
+        }
+    }
+    pub const fn mk_uint8_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U8(HypercallBufferU8Field { val: 0 }),
+        }
+    }
+    pub const fn mk_uint16_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U16(HypercallBufferU16Field { val: 0 }),
+        }
+    }
+    pub const fn mk_uint32_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U32(HypercallBufferU32Field { val: 0 }),
+        }
+    }
+    pub const fn mk_uint64_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U64(HypercallBufferU64Field { val: 0 }),
+        }
+    }
+    pub const fn mk_uint32_t_const(offset: usize, val: u32) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U32Const(HypercallBufferU32ConstField { val }),
+        }
+    }
+
+    pub const fn mk_buffer_with_size(offset: usize, size_offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::Buf(HypercallBufferBufferField {
+                size_offset: Some(size_offset),
+                data: BytesInput::new(vec![]),
+            }),
         }
     }
 }
@@ -242,6 +348,94 @@ impl HypercallBufferEvtchnPortField {
     }
 }
 
+///uint8_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU8Field {
+    val: u8,
+}
+
+impl HypercallBufferU8Field {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        self.val = rand.next() as u8;
+    }
+}
+
+///uint16_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU16Field {
+    val: u16,
+}
+
+impl HypercallBufferU16Field {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        self.val = rand.next() as u16;
+    }
+}
+
+///uint32_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU32Field {
+    val: u32,
+}
+
+impl HypercallBufferU32Field {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        self.val = rand.next() as u32;
+    }
+}
+
+///uint64_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU64Field {
+    val: u64,
+}
+
+impl HypercallBufferU64Field {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        self.val = rand.next();
+    }
+}
+
+///uint32_t const value
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU32ConstField {
+    val: u32,
+}
+
+///buffer ptr value
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferBufferField {
+    size_offset: Option<usize>,
+    data: BytesInput,
+}
+
+impl HypercallBufferBufferField {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand + HasMaxSize,
+    {
+        // Create and run havoc mutator
+        let mut mutator = HavocScheduledMutator::new(havoc_mutations_no_crossover());
+        let _ = Mutator::<BytesInput, S>::mutate(&mut mutator, state, &mut self.data);
+    }
+}
+
 /// LibAFL-compatible Input
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
 pub struct GenericHypercallInput {
@@ -255,7 +449,7 @@ pub struct GenericHypercallInput {
 impl GenericHypercallInput {
     pub fn new<S>(definition: GenericHypercallDef, state: &mut S) -> Self
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
         let mut res = Self { definition };
 
@@ -286,7 +480,12 @@ impl CmdSerializable for GenericHypercallInput {
                 HypercallArg::Const(c) => serializer.emit_hvc_arg(c.arg_idx, c.const_val),
                 HypercallArg::Var(v) => serializer.emit_hvc_arg(v.arg_idx, v.cur_val),
                 HypercallArg::Buffer(b) => {
-                    serializer.emit_hvc_buf(b.arg_idx, b.serialize().as_slice())
+		    let (buffer, fixups) = b.serialize();
+		    serializer.emit_hvc_buf(b.arg_idx, buffer.as_slice());
+		    for fixup in fixups {
+			serializer.emit_fixup_buf_ptr(b.arg_idx, fixup);
+		    }
+
                 }
             }
         }
@@ -298,7 +497,7 @@ impl CmdSerializable for GenericHypercallInput {
 impl GenericHypercallInput {
     pub fn randomize_all<S>(&mut self, state: &mut S)
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
         for f in &mut self.definition.args {
             match f {
@@ -314,7 +513,7 @@ impl GenericHypercallInput {
 
     pub fn randomize_one<S>(&mut self, state: &mut S) -> MutationResult
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
         if let Some(f) = state.rand_mut().choose(&mut self.definition.args) {
             match f {
@@ -340,14 +539,14 @@ pub struct GenericHypercallOneMutator {}
 
 impl<S> Mutator<GenericHypercallInput, S> for GenericHypercallOneMutator
 where
-    S: HasRand,
+    S: HasRand + HasMaxSize,
 {
     fn mutate(
         &mut self,
         state: &mut S,
         input: &mut GenericHypercallInput,
     ) -> Result<MutationResult, Error> {
-	Ok(input.randomize_one(state))
+        Ok(input.randomize_one(state))
     }
 
     fn post_exec(&mut self, _state: &mut S, _new_corpus_id: Option<CorpusId>) -> Result<(), Error> {
@@ -367,7 +566,7 @@ pub struct GenericHypercallAllMutator {}
 
 impl<S> Mutator<GenericHypercallInput, S> for GenericHypercallAllMutator
 where
-    S: HasRand,
+    S: HasRand + HasMaxSize,
 {
     fn mutate(
         &mut self,

@@ -62,7 +62,7 @@ impl HypercallListGenerator {
 
 impl<S> Generator<HypInputList, S> for HypercallListGenerator
 where
-    S: HasRand,
+    S: HasRand + HasMaxSize,
 {
     fn generate(&mut self, state: &mut S) -> Result<HypInputList, Error> {
         let mut input: HypInputList = Default::default();

@@ -1,12 +1,13 @@
 /// Base input type for various hypercall inputs
 use crate::fuzzer::generic_hypercall::GenericHypercallInput;
 use crate::fuzzer::hyp_evtchn::generate_evtchn_op;
+use crate::fuzzer::hyp_sysctl::generate_sysctl_op;
 
 use libafl::{
     corpus::CorpusId,
     inputs::Input,
     mutators::{MutationResult, Mutator},
-    state::HasRand,
+    state::{HasRand, HasMaxSize},
     Error, SerdeAny,
 };
 use serde::{Deserialize, Serialize};
@@ -27,15 +28,18 @@ impl Input for HypercallInput {}
 impl HypercallInput {
     pub fn gen_generic_input<S>(state: &mut S) -> HypercallInput
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
-        // TODO: Add other input types here
-        Self::GenericHypercall(generate_evtchn_op(state))
+        let ctrs: Vec<fn(state: &mut S) -> GenericHypercallInput> =
+            vec![generate_evtchn_op, generate_sysctl_op];
+
+	// Safety: list of ctrs is not empty
+        Self::GenericHypercall(state.rand_mut().choose(ctrs).unwrap()(state))
     }
 
     pub fn generate<S>(state: &mut S) -> HypercallInput
     where
-        S: HasRand,
+        S: HasRand + HasMaxSize,
     {
         let ctrs: Vec<fn(state: &mut S) -> HypercallInput> = vec![Self::gen_generic_input];
 
@@ -48,7 +52,7 @@ pub struct HypercallOneMutator {}
 
 impl<S> Mutator<HypercallInput, S> for HypercallOneMutator
 where
-    S: HasRand,
+    S: HasRand + HasMaxSize,
 {
     fn mutate(
         &mut self,
@@ -76,7 +80,7 @@ pub struct HypercallAllMutator {}
 
 impl<S> Mutator<HypercallInput, S> for HypercallAllMutator
 where
-    S: HasRand,
+    S: HasRand + HasMaxSize,
 {
     fn mutate(
         &mut self,
@@ -87,7 +91,7 @@ where
             HypercallInput::GenericHypercall(h) => {
                 h.randomize_all(state);
                 Ok(MutationResult::Mutated)
-            },
+            }
         }
     }
 

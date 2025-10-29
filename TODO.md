@@ -4,3 +4,4 @@
 - Implement multi-process fuzzing (LibAFL supports this, but it
   requires more complex code in fuzzer.rs)
 - Add support for release builds
+- Add possibility to randomize "size" fields for buffer arguments to feed invalid input to Xen
