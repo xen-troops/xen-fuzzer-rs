@@ -5,6 +5,7 @@ mod generic_hypercall;
 mod hyp_base_input;
 mod hyp_evtchn;
 mod hyp_sysctl;
+mod hyp_hypfs;
 mod hyp_list_input;
 mod hyp_macro;
 mod xen_bindings;
@@ -292,7 +293,8 @@ pub fn fuzz(cli: &Cli) -> process::ExitCode {
             );
             process::exit(1);
         });
-    println!("We imported {} inputs from disk.", state.corpus().count());
+//    println!("We imported {} inputs from disk.", state.corpus().count());
+    println!("We generated {} inputs as initial corpus.", state.corpus().count());
 
     let tracing = ShadowTracingStage::new();
     let mapped_mutators = tuple_list!(

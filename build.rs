@@ -16,6 +16,7 @@ fn main() {
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
+	.clang_arg("--target=aarch64")
         // Tell cargo to invalidate the built crate whenever any of the
     // included header files changed.
 	// .allowlist_item("qemu_plugin.*")

@@ -61,13 +61,13 @@ macro_rules! hypercall_arg {
 	HypercallArg::mk_const($num, $val as u64)
     };
 
-    ($num:expr, struct $name:ident, $($type:ident $field:ident),+) => {
+    ($num:expr, struct $name:ident, $($type:ident $field:ident),*) => {
 	HypercallArg::mk_buffer($num, size_of::<$name>(), vec![
 	    $(
 		paste! {
 		    HypercallBufferField::[<mk_ $type>] (offset_of!($name, $field))
 		}
-	    ),+
+	    ),*
 	])
     };
 
@@ -90,8 +90,29 @@ macro_rules! hypercall_struct_field {
 	}
     };
 
+    (enum $struct:ident : $($field:ident).+ ($type:ident) [$($val:ident),+]) => {
+	paste! {
+	    HypercallBufferField::[<mk_ $type _enum>] (offset_of!($struct, $($field).+),
+						       vec![$($val),+])
+	}
+    };
+
     (buf_with_size $struct:ident : $($field:ident).+  => $($size_field:ident).+ ) => {
 	HypercallBufferField::mk_buffer_with_size(offset_of!($struct, $($field).+),
 						  offset_of!($struct, $($size_field).+))
+    };
+
+    (buf_wo_size $struct:ident : $($field:ident).+ ) => {
+	HypercallBufferField::mk_buffer_wo_size(offset_of!($struct, $($field).+))
+    };
+
+    (typed_buf_with_size $struct:ident : $($field:ident).+ ($type:ident) => $($size_field:ident).+ ) => {
+	HypercallBufferField::mk_aligned_buffer_with_size(offset_of!($struct, $($field).+),
+							  ::std::sizeof($type),
+							  offset_of!($struct, $($size_field).+))
+    };
+    (typed_buf_wo_size $struct:ident : $($field:ident).+ ($type:ident) ) => {
+	HypercallBufferField::mk_aligned_buffer_wo_size(offset_of!($struct, $($field).+),
+							::std::sizeof($type))
     };
 }
