@@ -70,8 +70,8 @@ def main():
     ms = handle_main_struct(MAIN_STRUCT)
     PASS = 1
     deep_dive(tu.cursor)
-    for op in ms.ops:
-        emit_hypercall_def(op)
+    for name, s in ms.ops:
+        emit_hypercall_def(name, s)
     emit_ctors(CTORS)
     print_structs(HYP_DEFS)
     print_ops(HYP_DEFS)
@@ -137,7 +137,7 @@ def handle_main_struct(node: Cursor):
                 for u in ch.get_children().__next__().get_children():
                     ret = handle_main_union(u)
                     if ret:
-                        ops.append(ret)
+                        ops.append((u.spelling,ret))
     return SysCtlMainStruct(node=node, ops=ops)
 
 
@@ -173,7 +173,7 @@ def get_cursor_id(cursor, cursor_list=[]):
     return len(cursor_list) - 1
 
 
-def emit_hypercall_def(d: SysCtlOpStruct):
+def emit_hypercall_def(sname: str, d: SysCtlOpStruct):
     op_replacement = {
         "xen_sysctl_cpu_levelling_caps": "XEN_SYSCTL_get_cpu_levelling_caps",
         "xen_sysctl_cpu_featureset": "XEN_SYSCTL_get_cpu_featureset",
@@ -205,7 +205,7 @@ def emit_hypercall_def(d: SysCtlOpStruct):
     out.write(
         "            hypercall_struct_field!{const xen_sysctl:interface_version (uint32_t) = XEN_SYSCTL_INTERFACE_VERSION},\n"
     )
-    fields_str = [emit_hypercall_field(name, f) for f in fields]
+    fields_str = [emit_hypercall_field(sname, f) for f in fields]
     out.write(",\n".join(fields_str) + "\n")
     out.write("        }\n")
     out.write("}\n")
@@ -256,18 +256,20 @@ def parse_fields(d: SysCtlOpStruct) -> List[HypercallField]:
                 f.fname = fname + "." + f.fname
                 ret.append(f)
 
-        if not array_len:
-                ret.append(HypercallField(ftype=ftype, fname=fname, fkind=fkind))
-        else:
-            for x in range(array_len):
-                ret.append(HypercallField(ftype=ftype, fname=fname + f"__{x}", fkind=fkind))
+        if not ftype.startswith("struct ") and not array_len:
+            ret.append(HypercallField(ftype=ftype, fname=fname, fkind=fkind))
+        # if not array_len:
+        #         ret.append(HypercallField(ftype=ftype, fname=fname, fkind=fkind))
+        # else:
+        #     for x in range(array_len):
+        #         ret.append(HypercallField(ftype=ftype, fname=fname + f"__{x}", fkind=fkind))
 
     guess_buffers_with_size_var(ret)
     return ret
 
 def guess_buffers_with_size_var(fields: List[HypercallField]):
     def try_field(fields: List[HypercallField], f: HypercallField, i: int):
-        possible_names = ["count", "size"]
+        possible_names = ["count", "size", "overlay_fdt_size"]
         possible_types = ["uint32_t"]
         name = fields[i].fname.split(".")[-1]
         if name not in possible_names:
@@ -291,6 +293,14 @@ def guess_buffers_with_size_var(fields: List[HypercallField]):
             try_field(fields, f, i - 1)
 
 def emit_hypercall_field(struct_name: str, f: HypercallField):
+    def fixup_type(t:str):
+        fixups = {"uint32":"u32", "const_char":"char", "const_void":"char"}
+        repl = fixups.get(t)
+        if repl:
+            return repl
+        return t
+
+    f.ftype = fixup_type(f.ftype)
     fkind_str = "var"
     type_str = f" ({f.ftype})"
     fbufsize_str = ""
@@ -300,6 +310,8 @@ def emit_hypercall_field(struct_name: str, f: HypercallField):
             type_str = ""
         else:
             fkind_str = "typed_buf_wo_size"
+            if f.ftype == "uint32":
+                type_str = " (u32)"
     elif f.fkind == FieldKind.BUF_WITH_SIZE:
         fbufsize_str = f" => u.{struct_name}.{f.fsize_name}"
         if f.ftype == "uint8_t" or f.ftype == "uint8"  or f.ftype == "char":
@@ -307,6 +319,8 @@ def emit_hypercall_field(struct_name: str, f: HypercallField):
             type_str = ""
         else:
             fkind_str = "typed_buf_with_size"
+            if f.ftype == "uint32":
+                type_str = " (u32)"
 
     return (
         " " * 12 +
@@ -317,7 +331,7 @@ def emit_hypercall_field(struct_name: str, f: HypercallField):
 def emit_ctors(lst: List[str]):
     out.write("const CTRS: &'static [fn() -> GenericHypercallDef] = &[\n")
     for d in lst:
-        out.write(f"    mk_{d},\n")
+        out.write(f"    {d},\n")
     out.write("]")
 
 

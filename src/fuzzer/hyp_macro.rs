@@ -107,12 +107,12 @@ macro_rules! hypercall_struct_field {
     };
 
     (typed_buf_with_size $struct:ident : $($field:ident).+ ($type:ident) => $($size_field:ident).+ ) => {
-	HypercallBufferField::mk_aligned_buffer_with_size(offset_of!($struct, $($field).+),
-							  ::std::sizeof($type),
+	HypercallBufferField::mk_typed_buffer_with_size(offset_of!($struct, $($field).+),
+							  ::std::mem::size_of::<$type>(),
 							  offset_of!($struct, $($size_field).+))
     };
     (typed_buf_wo_size $struct:ident : $($field:ident).+ ($type:ident) ) => {
-	HypercallBufferField::mk_aligned_buffer_wo_size(offset_of!($struct, $($field).+),
-							::std::sizeof($type))
+	HypercallBufferField::mk_typed_buffer_wo_size(offset_of!($struct, $($field).+),
+							::std::mem::size_of::<$type>())
     };
 }

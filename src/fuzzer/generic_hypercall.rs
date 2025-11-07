@@ -2,7 +2,7 @@
 /// This covers hypercalls that can be data-defined
 use crate::fuzzer::{
     cmd_serializer::{CmdSerializable, CmdSerializer},
-    xen_bindings::{domid_t, evtchn_port_t},
+    xen_bindings::{domid_t, evtchn_port_t, xen_pfn_t},
 };
 
 use libafl::{
@@ -95,6 +95,12 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::EvtchnPort(e) => {
                     Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
                 }
+                HypercallBufferFieldData::XenPfn(p) => {
+                    Self::splice(&mut data, f.offset, p.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::XenDomainHandle(h) => {
+                    Self::splice(&mut data, f.offset, h.val.as_slice())
+                }
                 HypercallBufferFieldData::U8(u) => {
                     Self::splice(&mut data, f.offset, u.val.to_le_bytes().as_slice())
                 }
@@ -113,7 +119,13 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::U32Enum(e) => {
                     Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
                 }
-		// TODO: Factor this out
+                HypercallBufferFieldData::I32(i) => {
+                    Self::splice(&mut data, f.offset, i.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::I64(i) => {
+                    Self::splice(&mut data, f.offset, i.val.to_le_bytes().as_slice())
+                }
+                // TODO: Factor this out
                 HypercallBufferFieldData::Buf(b) => {
                     let buf_offset = data.len();
                     fixups.push(f.offset);
@@ -126,8 +138,8 @@ impl HypercallBufferArg {
                             (b.data.len() as u32).to_le_bytes().as_slice(),
                         )
                     }
-                },
-		HypercallBufferFieldData::TypedBuf(b) => {
+                }
+                HypercallBufferFieldData::TypedBuf(b) => {
                     let buf_offset = data.len();
                     fixups.push(f.offset);
                     data.extend(&b.data.target_bytes());
@@ -140,7 +152,6 @@ impl HypercallBufferArg {
                         )
                     }
                 }
-
             }
         }
         //	dbg!(self.size, data.len());
@@ -155,12 +166,16 @@ impl HypercallBufferArg {
             match &mut f.data {
                 HypercallBufferFieldData::DomId(d) => d.randomize(state),
                 HypercallBufferFieldData::EvtchnPort(e) => e.randomize(state),
+                HypercallBufferFieldData::XenPfn(p) => p.randomize(state),
+                HypercallBufferFieldData::XenDomainHandle(h) => h.randomize(state),
                 HypercallBufferFieldData::U8(u) => u.randomize(state),
                 HypercallBufferFieldData::U16(u) => u.randomize(state),
                 HypercallBufferFieldData::U32(u) => u.randomize(state),
                 HypercallBufferFieldData::U64(u) => u.randomize(state),
                 HypercallBufferFieldData::U32Const(_) => (),
                 HypercallBufferFieldData::U32Enum(e) => e.randomize(state),
+                HypercallBufferFieldData::I32(i) => i.randomize(state),
+                HypercallBufferFieldData::I64(i) => i.randomize(state),
                 HypercallBufferFieldData::Buf(b) => b.randomize(state),
                 HypercallBufferFieldData::TypedBuf(b) => b.randomize(state),
             }
@@ -179,6 +194,14 @@ impl HypercallBufferArg {
                 }
                 HypercallBufferFieldData::EvtchnPort(e) => {
                     e.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::XenPfn(p) => {
+                    p.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::XenDomainHandle(h) => {
+                    h.randomize(state);
                     MutationResult::Mutated
                 }
                 HypercallBufferFieldData::U8(u) => {
@@ -200,6 +223,14 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::U32Const(_) => MutationResult::Skipped,
                 HypercallBufferFieldData::U32Enum(e) => {
                     e.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::I32(i) => {
+                    i.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::I64(i) => {
+                    i.randomize(state);
                     MutationResult::Mutated
                 }
                 HypercallBufferFieldData::Buf(b) => {
@@ -237,12 +268,16 @@ pub struct HypercallVariableArg {
 pub enum HypercallBufferFieldData {
     DomId(HypercallBufferDomIdField),
     EvtchnPort(HypercallBufferEvtchnPortField),
+    XenPfn(HypercallBufferXenPfnField),
+    XenDomainHandle(HypercallBufferXenDomainHandleField),
     U8(HypercallBufferU8Field),
     U16(HypercallBufferU16Field),
     U32(HypercallBufferU32Field),
     U64(HypercallBufferU64Field),
     U32Const(HypercallBufferU32ConstField),
     U32Enum(HypercallBufferU32EnumField),
+    I32(HypercallBufferI32Field),
+    I64(HypercallBufferI64Field),
     Buf(HypercallBufferBufferField),
     TypedBuf(HypercallBufferTypedBufferField),
 }
@@ -267,6 +302,20 @@ impl HypercallBufferField {
         Self {
             offset,
             data: HypercallBufferFieldData::EvtchnPort(HypercallBufferEvtchnPortField { val: 0 }),
+        }
+    }
+    pub const fn mk_xen_pfn_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::XenPfn(HypercallBufferXenPfnField { val: 0 }),
+        }
+    }
+    pub const fn mk_xen_domain_handle_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::XenDomainHandle(HypercallBufferXenDomainHandleField {
+                val: [0; 16],
+            }),
         }
     }
     pub const fn mk_uint8_t(offset: usize) -> Self {
@@ -308,6 +357,18 @@ impl HypercallBufferField {
             }),
         }
     }
+    pub const fn mk_int32_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::I32(HypercallBufferI32Field { val: 0 }),
+        }
+    }
+    pub const fn mk_int64_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::I64(HypercallBufferI64Field { val: 0 }),
+        }
+    }
     pub const fn mk_buffer_with_size(offset: usize, size_offset: usize) -> Self {
         Self {
             offset,
@@ -339,15 +400,11 @@ impl HypercallBufferField {
             )),
         }
     }
-    pub const fn mk_typed_buffer_wo_size(
-        offset: usize,
-        item_size: usize,
-    ) -> Self {
+    pub const fn mk_typed_buffer_wo_size(offset: usize, item_size: usize) -> Self {
         Self {
             offset,
             data: HypercallBufferFieldData::TypedBuf(HypercallBufferTypedBufferField::new(
-                item_size,
-                None,
+                item_size, None,
             )),
         }
     }
@@ -417,6 +474,94 @@ impl HypercallBufferEvtchnPortField {
     {
         let rand = state.rand_mut();
         self.val = rand.between(0, 64) as u32;
+    }
+}
+
+/// xen_pfn_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferXenPfnField {
+    val: xen_pfn_t,
+}
+
+impl HypercallBufferXenPfnField {
+    // rust-bindgen is unable to parse these defines for some reason
+    const GUEST_RAM0_BASE: u64 = 0x40000000;
+    const GUEST_RAM1_BASE: u64 = 0x0200000000;
+
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+
+        // Let's choose interesting PFNs
+        // Safety: list is non-empty
+        self.val = rand
+            .choose([
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                12,
+                13,
+                14,
+                15,
+                16,
+                0x1000000,
+                0x2000000,
+                Self::GUEST_RAM0_BASE / 4096,
+                Self::GUEST_RAM0_BASE / 4096 + 128,
+                Self::GUEST_RAM0_BASE / 4096 + 256,
+                Self::GUEST_RAM0_BASE / 4096 + 1024,
+                Self::GUEST_RAM1_BASE / 4096,
+                Self::GUEST_RAM1_BASE / 4096 + 128,
+                Self::GUEST_RAM1_BASE / 4096 + 256,
+                Self::GUEST_RAM1_BASE / 4096 + 1024,
+                0xFFFFFFFF,
+                0xFFFFFFFFFFFFFFFF,
+            ])
+            .unwrap();
+    }
+}
+
+/// xen_domain_handle_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferXenDomainHandleField {
+    val: [u8; 16],
+}
+
+impl HypercallBufferXenDomainHandleField {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+
+        // This is boring UUID, so let's just use set of some UUIDs
+        let interesting_uuids: [[u8; 16]; 4] = [
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+                0xFF, 0xFF,
+            ],
+            [
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+                0xee, 0xff,
+            ],
+            [
+                0xee, 0xa1, 0xad, 0xb1, 0x1c, 0xf6, 0x41, 0x6a, 0x97, 0x33, 0xfd, 0xed, 0x50, 0x3a,
+                0xca, 0xb5,
+            ],
+        ];
+
+        self.val = rand.choose(interesting_uuids).unwrap();
     }
 }
 
@@ -508,6 +653,38 @@ impl HypercallBufferU32EnumField {
     }
 }
 
+///int32_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferI32Field {
+    val: i32,
+}
+
+impl HypercallBufferI32Field {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        self.val = rand.next() as i32;
+    }
+}
+
+///int64_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferI64Field {
+    val: i64,
+}
+
+impl HypercallBufferI64Field {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        self.val = rand.next() as i64;
+    }
+}
+
 ///buffer ptr value
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
 pub struct HypercallBufferBufferField {
@@ -553,7 +730,8 @@ impl HypercallBufferTypedBufferField {
 
             // Help further mutations with generating initial data
             for i in 0..self.data.len() {
-                self.data.mutator_bytes_mut()[i] = rand.below(std::num::NonZero::new(256 as usize).unwrap()) as u8;
+                self.data.mutator_bytes_mut()[i] =
+                    rand.below(std::num::NonZero::new(256 as usize).unwrap()) as u8;
             }
         }
 

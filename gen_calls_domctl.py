@@ -1,7 +1,7 @@
 from clang.cindex import Index, CursorKind, TranslationUnit, Cursor, TokenKind
 from pprint import pprint
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from enum import Enum
 
 KNOWN_HTPES = {"XEN_DOMCTL": ("domctl", "__HYPERVISOR_domctl")}
@@ -16,6 +16,7 @@ PASS = 0
 
 MAIN_STRUCT: Cursor = None
 
+CTORS = []
 
 class FieldKind(Enum):
     CONST = 1
@@ -37,6 +38,7 @@ class HypercallField:
     ftype: str
     fname: str
     fkind: FieldKind
+    fsize_name: Optional[str] = None
 
 
 @dataclass
@@ -68,13 +70,9 @@ def main():
     ms = handle_main_struct(MAIN_STRUCT)
     PASS = 1
     deep_dive(tu.cursor)
-    pprint("Learned defines:")
-    pprint(DOMCTL_OP_IDS)
-    pprint("Learned structs:")
-    pprint(LEARNED_STRUCTS)
-    for op in ms.ops:
-        emit_hypercall_def(op)
-    emit_ctors(HYP_DEFS)
+    for name, s in ms.ops:
+        emit_hypercall_def(name, s)
+    emit_ctors(CTORS)
     print_structs(HYP_DEFS)
     print_ops(HYP_DEFS)
 
@@ -116,15 +114,19 @@ def handle_struct(node):
     # if node.spelling not in LEARNED_STRUCTS:
     #     return
     global MAIN_STRUCT
-    if node.spelling.startswith("xen_domctl_"):
-        LEARNED_STRUCTS.append(DomctlOpStruct(node=node))
-        return
     if node.spelling == "xen_domctl" and PASS == 0:
         print("Found main struct")
         #        pprint(get_info(node,1))
         MAIN_STRUCT = node
         return
 
+    LEARNED_STRUCTS.append(DomctlOpStruct(node=node))
+
+def find_struct(name: str) -> DomctlOpStruct:
+    for x in LEARNED_STRUCTS:
+        if x.node.spelling == name:
+            return x
+    return None
 
 def handle_main_struct(node: Cursor):
     ops = []
@@ -135,7 +137,7 @@ def handle_main_struct(node: Cursor):
                 for u in ch.get_children().__next__().get_children():
                     ret = handle_main_union(u)
                     if ret:
-                        ops.append(ret)
+                        ops.append((u.spelling,ret))
     return DomctlMainStruct(node=node, ops=ops)
 
 
@@ -148,9 +150,9 @@ def handle_main_union(u):
         return None
 
     op_struct_name = fdec[0].spelling.removeprefix("struct ")
-    for x in LEARNED_STRUCTS:
-        if op_struct_name == x.node.spelling:
-            return x
+    s = find_struct(op_struct_name)
+    if s:
+        return s
     else:
         raise Exception(f"Can't find struct for op {u.spelling}")
 
@@ -171,8 +173,7 @@ def get_cursor_id(cursor, cursor_list=[]):
     return len(cursor_list) - 1
 
 
-def emit_hypercall_def(d: DomctlOpStruct):
-    # TODO: Handle setters/getters
+def emit_hypercall_def(sname: str, d: DomctlOpStruct):
     op_replacement = {
         "xen_domctl_nodeaffinity": "XEN_DOMCTL_getnodeaffinity",
         "xen_domctl_vcpuaffinity": "XEN_DOMCTL_getvcpuaffinity",
@@ -188,7 +189,6 @@ def emit_hypercall_def(d: DomctlOpStruct):
         "xen_domctl_vnuma": "XEN_DOMCTL_setvnumainfo",
         "xen_domctl_paging_mempool": "XEN_DOMCTL_get_paging_mempool_size",
     }
-
     skips = [
         # inline struct
         "xen_domctl_createdomain",
@@ -201,9 +201,7 @@ def emit_hypercall_def(d: DomctlOpStruct):
 
     if name in skips:
         return
-
     op_def = ""
-
     # TODO: Fix this shitcode
     for op_id in DOMCTL_OP_IDS:
         if op_id.lower() == name:
@@ -224,11 +222,13 @@ def emit_hypercall_def(d: DomctlOpStruct):
     out.write(
         "            hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},\n"
     )
-    fields_str = [emit_hypercall_field(name, f) for f in fields]
+    fields_str = [emit_hypercall_field(sname, f) for f in fields]
     out.write(",\n".join(fields_str) + "\n")
     out.write("        }\n")
     out.write("}\n")
     out.write("\n")
+
+    CTORS.append(f"mk_{name}")
 
 
 #    sys.exit(1)
@@ -243,7 +243,7 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
         if fname.startswith("pad") or fname.startswith("_"):
             continue
         if ch.kind != CursorKind.FIELD_DECL:
-            pprint(get_info(ch, 0))
+            pprint(get_info(ch,0))
             raise Exception(f"Unexpected child kind {ch.kind}")
         field_def = list(ch.get_children())
         if field_def[0].kind == CursorKind.ALIGNED_ATTR:
@@ -253,10 +253,8 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
             if field_def[1].kind == CursorKind.INTEGER_LITERAL:
                 tokens = list(field_def[1].get_tokens())
                 if len(tokens) > 1 or tokens[0].kind != TokenKind.LITERAL:
-                    raise Exception(
-                        f"Don't know what to do with these tokens: {tokens}")
+                    raise Exception(f"Don't know what to do with these tokens: {tokens}")
                 array_len = int(tokens[0].spelling)
-                print(array_len)
             else:
                 raise Exception(f"More fields that expected: {get_info(ch)}")
         ftype = field_def[0].spelling
@@ -264,35 +262,102 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
         if ftype.startswith("__guest_handle_64_"):
             fkind = FieldKind.BUF_WO_SIZE
             ftype = ftype.removeprefix("__guest_handle_64_")
-        if not array_len:
-            ret.append(HypercallField(ftype=ftype, fname=fname, fkind=fkind))
-        else:
-            for x in range(array_len):
-                ret.append(
-                    HypercallField(ftype=ftype,
-                                   fname=fname + f"__{x}",
-                                   fkind=fkind))
+        elif ftype.startswith("struct "):
+            # Great. We have embedded structure
+            s = find_struct(ftype.removeprefix("struct "))
+            if not s:
+                raise Exception(f"Can't locate type {ftype}")
+#            pprint(get_info(s.node))
+            fields = parse_fields(s)
+            for f in fields:
+                f.fname = fname + "." + f.fname
+                ret.append(f)
 
+        if not ftype.startswith("struct ") and not array_len:
+            ret.append(HypercallField(ftype=ftype, fname=fname, fkind=fkind))
+        # if not array_len:
+        #         ret.append(HypercallField(ftype=ftype, fname=fname, fkind=fkind))
+        # else:
+        #     for x in range(array_len):
+        #         ret.append(HypercallField(ftype=ftype, fname=fname + f"__{x}", fkind=fkind))
+
+    guess_buffers_with_size_var(ret)
     return ret
 
+def guess_buffers_with_size_var(fields: List[HypercallField]):
+    def try_field(fields: List[HypercallField], f: HypercallField, i: int):
+        possible_names = ["count", "size", "overlay_fdt_size"]
+        possible_types = ["uint32_t"]
+        name = fields[i].fname.split(".")[-1]
+        if name not in possible_names:
+            return False
+        t = fields[i].ftype
+        if t not in possible_types:
+            return False
+        f.fkind = FieldKind.BUF_WITH_SIZE
+        f.fsize_name = fields[i].fname
+        del fields[i]
+
+        return True
+
+    for i, f in enumerate(fields):
+        if f.fkind != FieldKind.BUF_WO_SIZE:
+            continue
+        res = False
+        if i != len(fields) - 1:
+            res = try_field(fields, f, i+1)
+        if not res and i != 0:
+            try_field(fields, f, i - 1)
 
 def emit_hypercall_field(struct_name: str, f: HypercallField):
+    def fixup_fname(n:str):
+        keywords = ["type"]
+        parts = n.split(".")
+        for i, p in enumerate(parts):
+            if p in keywords:
+                parts[i] = p+"_"
+        return ".".join(parts)
+
+    def fixup_type(t:str):
+        fixups = {"uint32":"u32", "const_char":"char", "const_void":"char", "uint": "__u_int"}
+        repl = fixups.get(t)
+        if repl:
+            return repl
+        return t
+
+    f.ftype = fixup_type(f.ftype)
+    f.fname = fixup_fname(f.fname)
     fkind_str = "var"
+    type_str = f" ({f.ftype})"
+    fbufsize_str = ""
     if f.fkind == FieldKind.BUF_WO_SIZE:
-        fkind_str = "buf_wo_size"
+        if f.ftype == "uint8_t" or f.ftype == "uint8" or f.ftype == "char":
+            fkind_str = "buf_wo_size"
+            type_str = ""
+        else:
+            fkind_str = "typed_buf_wo_size"
+            if f.ftype == "uint32":
+                type_str = " (u32)"
     elif f.fkind == FieldKind.BUF_WITH_SIZE:
-        fkind_str = "buf_with_size"
+        fbufsize_str = f" => u.{struct_name}.{f.fsize_name}"
+        if f.ftype == "uint8_t" or f.ftype == "uint8"  or f.ftype == "char":
+            fkind_str = "buf_with_size"
+            type_str = ""
+        else:
+            fkind_str = "typed_buf_with_size"
+            if f.ftype == "uint32":
+                type_str = " (u32)"
 
     return (
         " " * 12 +
-        f"hypercall_struct_field!{{{fkind_str} xen_domctl:u.{struct_name}.{f.fname} ({f.ftype}) }}"
+        f"hypercall_struct_field!{{{fkind_str} xen_domctl:u.{struct_name}.{f.fname}{type_str}{fbufsize_str}}}"
     )
 
 
-def emit_ctors(lst: List[HypercallDef]):
+def emit_ctors(lst: List[str]):
     out.write("const CTRS: &'static [fn() -> GenericHypercallDef] = &[\n")
     for d in lst:
-        out.write(f"    mk_{d.struct_type},\n")
+        out.write(f"    {d},\n")
     out.write("]")
 
 

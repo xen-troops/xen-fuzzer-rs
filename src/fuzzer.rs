@@ -3,11 +3,12 @@
 mod cmd_serializer;
 mod generic_hypercall;
 mod hyp_base_input;
+mod hyp_domctl;
 mod hyp_evtchn;
-mod hyp_sysctl;
 mod hyp_hypfs;
 mod hyp_list_input;
 mod hyp_macro;
+mod hyp_sysctl;
 mod xen_bindings;
 mod xencov;
 mod xencov_feedback;
