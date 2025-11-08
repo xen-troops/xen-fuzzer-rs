@@ -116,6 +116,9 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::U32Const(c) => {
                     Self::splice(&mut data, f.offset, c.val.to_le_bytes().as_slice())
                 }
+                HypercallBufferFieldData::U8Enum(e) => {
+                    Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
+                }
                 HypercallBufferFieldData::U32Enum(e) => {
                     Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
                 }
@@ -173,6 +176,7 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::U32(u) => u.randomize(state),
                 HypercallBufferFieldData::U64(u) => u.randomize(state),
                 HypercallBufferFieldData::U32Const(_) => (),
+                HypercallBufferFieldData::U8Enum(e) => e.randomize(state),
                 HypercallBufferFieldData::U32Enum(e) => e.randomize(state),
                 HypercallBufferFieldData::I32(i) => i.randomize(state),
                 HypercallBufferFieldData::I64(i) => i.randomize(state),
@@ -221,6 +225,10 @@ impl HypercallBufferArg {
                     MutationResult::Mutated
                 }
                 HypercallBufferFieldData::U32Const(_) => MutationResult::Skipped,
+                HypercallBufferFieldData::U8Enum(e) => {
+                    e.randomize(state);
+                    MutationResult::Mutated
+                }
                 HypercallBufferFieldData::U32Enum(e) => {
                     e.randomize(state);
                     MutationResult::Mutated
@@ -275,6 +283,7 @@ pub enum HypercallBufferFieldData {
     U32(HypercallBufferU32Field),
     U64(HypercallBufferU64Field),
     U32Const(HypercallBufferU32ConstField),
+    U8Enum(HypercallBufferU8EnumField),
     U32Enum(HypercallBufferU32EnumField),
     I32(HypercallBufferI32Field),
     I64(HypercallBufferI64Field),
@@ -346,6 +355,15 @@ impl HypercallBufferField {
         Self {
             offset,
             data: HypercallBufferFieldData::U32Const(HypercallBufferU32ConstField { val }),
+        }
+    }
+    pub const fn mk_uint8_t_enum(offset: usize, possible_vals: Vec<u8>) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U8Enum(HypercallBufferU8EnumField {
+                val: 0,
+                possible_vals,
+            }),
         }
     }
     pub const fn mk_uint32_t_enum(offset: usize, possible_vals: Vec<u32>) -> Self {
@@ -633,6 +651,24 @@ impl HypercallBufferU64Field {
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
 pub struct HypercallBufferU32ConstField {
     val: u32,
+}
+
+///uint8_t enum value
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU8EnumField {
+    val: u8,
+    possible_vals: Vec<u8>,
+}
+
+impl HypercallBufferU8EnumField {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        // Safety: expected that user provid non-empty array
+        self.val = *rand.choose(self.possible_vals.as_slice()).unwrap();
+    }
 }
 
 ///uint32_t enum value

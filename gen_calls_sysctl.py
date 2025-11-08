@@ -18,6 +18,7 @@ MAIN_STRUCT: Cursor = None
 
 CTORS = []
 
+
 class FieldKind(Enum):
     CONST = 1
     VAR = 2
@@ -122,11 +123,13 @@ def handle_struct(node):
 
     LEARNED_STRUCTS.append(SysCtlOpStruct(node=node))
 
+
 def find_struct(name: str) -> SysCtlOpStruct:
     for x in LEARNED_STRUCTS:
         if x.node.spelling == name:
             return x
     return None
+
 
 def handle_main_struct(node: Cursor):
     ops = []
@@ -137,7 +140,7 @@ def handle_main_struct(node: Cursor):
                 for u in ch.get_children().__next__().get_children():
                     ret = handle_main_union(u)
                     if ret:
-                        ops.append((u.spelling,ret))
+                        ops.append((u.spelling, ret))
     return SysCtlMainStruct(node=node, ops=ops)
 
 
@@ -180,7 +183,11 @@ def emit_hypercall_def(sname: str, d: SysCtlOpStruct):
         "xen_sysctl_cpu_policy": "XEN_SYSCTL_get_cpu_policy",
     }
     name = d.node.spelling.removeprefix("struct ")
-    skips = ["xen_sysctl_get_pmstat", "xen_sysctl_pm_op", "xen_sysctl_scheduler_op", "xen_sysctl_psr_cmt_op", "xen_sysctl_psr_alloc", "xen_sysctl_livepatch_op"]
+    skips = [
+        "xen_sysctl_get_pmstat", "xen_sysctl_pm_op", "xen_sysctl_scheduler_op",
+        "xen_sysctl_psr_cmt_op", "xen_sysctl_psr_alloc",
+        "xen_sysctl_livepatch_op"
+    ]
 
     if name in skips:
         return
@@ -226,7 +233,7 @@ def parse_fields(d: SysCtlOpStruct) -> List[HypercallField]:
         if fname.startswith("pad") or fname.startswith("_"):
             continue
         if ch.kind != CursorKind.FIELD_DECL:
-            pprint(get_info(ch,0))
+            pprint(get_info(ch, 0))
             raise Exception(f"Unexpected child kind {ch.kind}")
         field_def = list(ch.get_children())
         if field_def[0].kind == CursorKind.ALIGNED_ATTR:
@@ -236,7 +243,8 @@ def parse_fields(d: SysCtlOpStruct) -> List[HypercallField]:
             if field_def[1].kind == CursorKind.INTEGER_LITERAL:
                 tokens = list(field_def[1].get_tokens())
                 if len(tokens) > 1 or tokens[0].kind != TokenKind.LITERAL:
-                    raise Exception(f"Don't know what to do with these tokens: {tokens}")
+                    raise Exception(
+                        f"Don't know what to do with these tokens: {tokens}")
                 array_len = int(tokens[0].spelling)
             else:
                 raise Exception(f"More fields that expected: {get_info(ch)}")
@@ -250,6 +258,8 @@ def parse_fields(d: SysCtlOpStruct) -> List[HypercallField]:
             s = find_struct(ftype.removeprefix("struct "))
             if not s:
                 raise Exception(f"Can't locate type {ftype}")
+
+
 #            pprint(get_info(s.node))
             fields = parse_fields(s)
             for f in fields:
@@ -267,7 +277,9 @@ def parse_fields(d: SysCtlOpStruct) -> List[HypercallField]:
     guess_buffers_with_size_var(ret)
     return ret
 
+
 def guess_buffers_with_size_var(fields: List[HypercallField]):
+
     def try_field(fields: List[HypercallField], f: HypercallField, i: int):
         possible_names = ["count", "size", "overlay_fdt_size"]
         possible_types = ["uint32_t"]
@@ -288,13 +300,15 @@ def guess_buffers_with_size_var(fields: List[HypercallField]):
             continue
         res = False
         if i != len(fields) - 1:
-            res = try_field(fields, f, i+1)
+            res = try_field(fields, f, i + 1)
         if not res and i != 0:
             try_field(fields, f, i - 1)
 
+
 def emit_hypercall_field(struct_name: str, f: HypercallField):
-    def fixup_type(t:str):
-        fixups = {"uint32":"u32", "const_char":"char", "const_void":"char"}
+
+    def fixup_type(t: str):
+        fixups = {"uint32": "u32", "const_char": "char", "const_void": "char"}
         repl = fixups.get(t)
         if repl:
             return repl
@@ -314,7 +328,7 @@ def emit_hypercall_field(struct_name: str, f: HypercallField):
                 type_str = " (u32)"
     elif f.fkind == FieldKind.BUF_WITH_SIZE:
         fbufsize_str = f" => u.{struct_name}.{f.fsize_name}"
-        if f.ftype == "uint8_t" or f.ftype == "uint8"  or f.ftype == "char":
+        if f.ftype == "uint8_t" or f.ftype == "uint8" or f.ftype == "char":
             fkind_str = "buf_with_size"
             type_str = ""
         else:

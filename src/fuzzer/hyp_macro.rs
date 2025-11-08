@@ -90,7 +90,7 @@ macro_rules! hypercall_struct_field {
 	}
     };
 
-    (enum $struct:ident : $($field:ident).+ ($type:ident) [$($val:ident),+]) => {
+    (enum $struct:ident : $($field:ident).+ ($type:ident) [$($val:expr),+]) => {
 	paste! {
 	    HypercallBufferField::[<mk_ $type _enum>] (offset_of!($struct, $($field).+),
 						       vec![$($val),+])
