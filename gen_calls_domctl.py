@@ -18,6 +18,7 @@ MAIN_STRUCT: Cursor = None
 
 CTORS = []
 
+
 class FieldKind(Enum):
     CONST = 1
     VAR = 2
@@ -55,6 +56,7 @@ class DomctlMainStruct:
 def main():
     global out
     global PASS
+
     out = open("hyp_domctl.tmpl", "wt")
     index = Index.create()
 
@@ -70,8 +72,8 @@ def main():
     ms = handle_main_struct(MAIN_STRUCT)
     PASS = 1
     deep_dive(tu.cursor)
-    for name, s in ms.ops:
-        emit_hypercall_def(name, s)
+    for op, struct, s in ms.ops:
+        emit_hypercall_def(op, struct, s)
     emit_ctors(CTORS)
     print_structs(HYP_DEFS)
     print_ops(HYP_DEFS)
@@ -122,22 +124,56 @@ def handle_struct(node):
 
     LEARNED_STRUCTS.append(DomctlOpStruct(node=node))
 
+
 def find_struct(name: str) -> DomctlOpStruct:
     for x in LEARNED_STRUCTS:
         if x.node.spelling == name:
             return x
     return None
 
+
 def handle_main_struct(node: Cursor):
     ops = []
+    op_replacement = {
+        "nodeaffinity":
+        ["XEN_DOMCTL_getnodeaffinity", "XEN_DOMCTL_setnodeaffinity"],
+        "vcpuaffinity":
+        ["XEN_DOMCTL_getvcpuaffinity", "XEN_DOMCTL_setvcpuaffinity"],
+        "vcpucontext":
+        ["XEN_DOMCTL_getvcpucontext", "XEN_DOMCTL_setvcpucontext"],
+        "tsc_info": ["XEN_DOMCTL_gettscinfo", "XEN_DOMCTL_settscinfo"],
+        "hvmcontext": ["XEN_DOMCTL_gethvmcontext", "XEN_DOMCTL_sethvmcontext"],
+        "hvmcontext_partial": ["XEN_DOMCTL_gethvmcontext_partial"],
+        "address_size":
+        ["XEN_DOMCTL_get_address_size", "XEN_DOMCTL_set_address_size"],
+        "ext_vcpucontext":
+        ["XEN_DOMCTL_get_ext_vcpucontext", "XEN_DOMCTL_set_ext_vcpucontext"],
+        "gdbsx_guest_memio": ["XEN_DOMCTL_gdbsx_guestmemio"],
+        # TODO: UnpauseVCPU as well
+        "gdbsx_pauseunp_vcpu":
+        ["XEN_DOMCTL_gdbsx_pausevcpu", "XEN_DOMCTL_gdbsx_unpausevcpu"],
+        "vnuma": ["XEN_DOMCTL_setvnumainfo"],
+        "paging_mempool": [
+            "XEN_DOMCTL_get_paging_mempool_size",
+            "XEN_DOMCTL_set_paging_mempool_size"
+        ],
+        "accesses_required": ["XEN_DOMCTL_set_access_required"],
+    }
+
     for ch in node.get_children():
         if ch.kind == CursorKind.FIELD_DECL:
             print("Field", ch.spelling)
             if ch.spelling == "u":
                 for u in ch.get_children().__next__().get_children():
-                    ret = handle_main_union(u)
-                    if ret:
-                        ops.append((u.spelling,ret))
+                    struct = handle_main_union(u)
+                    if struct:
+                        if u.spelling in op_replacement.keys():
+                            for op in op_replacement[u.spelling]:
+                                ops.append((op, u.spelling, struct))
+                            pass
+                        else:
+                            ops.append(("XEN_DOMCTL_" + u.spelling, u.spelling,
+                                        struct))
     return DomctlMainStruct(node=node, ops=ops)
 
 
@@ -173,51 +209,29 @@ def get_cursor_id(cursor, cursor_list=[]):
     return len(cursor_list) - 1
 
 
-def emit_hypercall_def(sname: str, d: DomctlOpStruct):
-    op_replacement = {
-        "xen_domctl_nodeaffinity": "XEN_DOMCTL_getnodeaffinity",
-        "xen_domctl_vcpuaffinity": "XEN_DOMCTL_getvcpuaffinity",
-        "xen_domctl_vcpucontext": "XEN_DOMCTL_getvcpucontext",
-        "xen_domctl_tsc_info": "XEN_DOMCTL_gettscinfo",
-        "xen_domctl_hvmcontext": "XEN_DOMCTL_gethvmcontext",
-        "xen_domctl_hvmcontext_partial": "XEN_DOMCTL_gethvmcontext_partial",
-        "xen_domctl_address_size": "XEN_DOMCTL_get_address_size",
-        "xen_domctl_ext_vcpucontext": "XEN_DOMCTL_get_ext_vcpucontext",
-        "xen_domctl_gdbsx_memio": "XEN_DOMCTL_gdbsx_guestmemio",
-        #TODOL UnpauseVCPU as well
-        "xen_domctl_gdbsx_pauseunp_vcpu": "XEN_DOMCTL_gdbsx_pausevcpu",
-        "xen_domctl_vnuma": "XEN_DOMCTL_setvnumainfo",
-        "xen_domctl_paging_mempool": "XEN_DOMCTL_get_paging_mempool_size",
-    }
+def emit_hypercall_def(op: str, sname: str, d: DomctlOpStruct):
     skips = [
         # inline struct
         "xen_domctl_createdomain",
         # enums
         "xen_domctl_scheduler_op",
-        "xen_domctl_assign_device", "xen_domctl_bind_pt_irq", "xen_domctl_vm_event_op", "xen_domctl_mem_sharing_op", "xen_domctl_monitor_op"
+        "xen_domctl_assign_device",
+        "xen_domctl_bind_pt_irq",
+        "xen_domctl_vm_event_op",
+        "xen_domctl_mem_sharing_op",
+        "xen_domctl_monitor_op"
     ]
 
     name = d.node.spelling.removeprefix("struct ")
 
     if name in skips:
         return
-    op_def = ""
-    # TODO: Fix this shitcode
-    for op_id in DOMCTL_OP_IDS:
-        if op_id.lower() == name:
-            op_def = op_id
-            break
-    else:
-        if name in op_replacement.keys():
-            op_def = op_replacement[name]
-        else:
-            raise Exception(f"Can't find op name for {name}")
 
     fields = parse_fields(d)
-    out.write(f"hypercall! {{{name}, __HYPERVISOR_domctl,\n")
+    out.write(f"hypercall! {{{op.lower()}, __HYPERVISOR_domctl,\n")
     out.write("        hypercall_arg!{0, complex_struct xen_domctl,\n")
     out.write(
-        f"            hypercall_struct_field!{{const xen_domctl:cmd (uint32_t) = {op_def}}},\n"
+        f"            hypercall_struct_field!{{const xen_domctl:cmd (uint32_t) = {op}}},\n"
     )
     out.write(
         "            hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},\n"
@@ -228,7 +242,7 @@ def emit_hypercall_def(sname: str, d: DomctlOpStruct):
     out.write("}\n")
     out.write("\n")
 
-    CTORS.append(f"mk_{name}")
+    CTORS.append(f"mk_{op.lower()}")
 
 
 #    sys.exit(1)
@@ -243,7 +257,7 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
         if fname.startswith("pad") or fname.startswith("_"):
             continue
         if ch.kind != CursorKind.FIELD_DECL:
-            pprint(get_info(ch,0))
+            pprint(get_info(ch, 0))
             raise Exception(f"Unexpected child kind {ch.kind}")
         field_def = list(ch.get_children())
         if field_def[0].kind == CursorKind.ALIGNED_ATTR:
@@ -253,7 +267,8 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
             if field_def[1].kind == CursorKind.INTEGER_LITERAL:
                 tokens = list(field_def[1].get_tokens())
                 if len(tokens) > 1 or tokens[0].kind != TokenKind.LITERAL:
-                    raise Exception(f"Don't know what to do with these tokens: {tokens}")
+                    raise Exception(
+                        f"Don't know what to do with these tokens: {tokens}")
                 array_len = int(tokens[0].spelling)
             else:
                 raise Exception(f"More fields that expected: {get_info(ch)}")
@@ -267,6 +282,8 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
             s = find_struct(ftype.removeprefix("struct "))
             if not s:
                 raise Exception(f"Can't locate type {ftype}")
+
+
 #            pprint(get_info(s.node))
             fields = parse_fields(s)
             for f in fields:
@@ -284,7 +301,9 @@ def parse_fields(d: DomctlOpStruct) -> List[HypercallField]:
     guess_buffers_with_size_var(ret)
     return ret
 
+
 def guess_buffers_with_size_var(fields: List[HypercallField]):
+
     def try_field(fields: List[HypercallField], f: HypercallField, i: int):
         possible_names = ["count", "size", "overlay_fdt_size"]
         possible_types = ["uint32_t"]
@@ -305,21 +324,28 @@ def guess_buffers_with_size_var(fields: List[HypercallField]):
             continue
         res = False
         if i != len(fields) - 1:
-            res = try_field(fields, f, i+1)
+            res = try_field(fields, f, i + 1)
         if not res and i != 0:
             try_field(fields, f, i - 1)
 
+
 def emit_hypercall_field(struct_name: str, f: HypercallField):
-    def fixup_fname(n:str):
+
+    def fixup_fname(n: str):
         keywords = ["type"]
         parts = n.split(".")
         for i, p in enumerate(parts):
             if p in keywords:
-                parts[i] = p+"_"
+                parts[i] = p + "_"
         return ".".join(parts)
 
-    def fixup_type(t:str):
-        fixups = {"uint32":"u32", "const_char":"char", "const_void":"char", "uint": "__u_int"}
+    def fixup_type(t: str):
+        fixups = {
+            "uint32": "u32",
+            "const_char": "char",
+            "const_void": "char",
+            "uint": "__u_int"
+        }
         repl = fixups.get(t)
         if repl:
             return repl
@@ -340,7 +366,7 @@ def emit_hypercall_field(struct_name: str, f: HypercallField):
                 type_str = " (u32)"
     elif f.fkind == FieldKind.BUF_WITH_SIZE:
         fbufsize_str = f" => u.{struct_name}.{f.fsize_name}"
-        if f.ftype == "uint8_t" or f.ftype == "uint8"  or f.ftype == "char":
+        if f.ftype == "uint8_t" or f.ftype == "uint8" or f.ftype == "char":
             fkind_str = "buf_with_size"
             type_str = ""
         else:
