@@ -10,6 +10,29 @@ use std::mem::offset_of;
 const CTRS: &'static [fn() -> GenericHypercallDef] = &[
     // Hand-written
     mk_xen_domctl_createdomain,
+    mk_xen_domctl_scheduler_op_getinfo,
+    mk_xen_domctl_scheduler_op_putvcpuinfo,
+    mk_xen_domctl_scheduler_op_putinfo_credit,
+    mk_xen_domctl_scheduler_op_putinfo_credit2,
+    mk_xen_domctl_scheduler_op_putinfo_rtds,
+    mk_xen_domctl_assign_device_pci,
+    mk_xen_domctl_assign_device_dts,
+    mk_xen_domctl_deassign_device_pci,
+    mk_xen_domctl_deassign_device_dts,
+    mk_xen_domctl_pt_irq_pci,
+    mk_xen_domctl_pt_irq_isa,
+    mk_xen_domctl_pt_irq_msi,
+    mk_xen_domctl_pt_irq_msi_translate,
+    mk_xen_domctl_pt_irq_spi,
+    mk_xen_domctl_vm_event_op,
+    mk_xen_domctl_mem_sharing_op,
+    mk_xen_domctl_monitor_op_rest,
+    mk_xen_domctl_monitor_op_enable_write_ctrlreg,
+    mk_xen_domctl_monitor_op_enable_mov_to_msr,
+    mk_xen_domctl_monitor_op_enable_guest_request,
+    mk_xen_domctl_monitor_op_enable_debug_exception,
+    mk_xen_domctl_monitor_op_enable_vmexit,
+    mk_xen_domctl_monitor_op_enable_rest,
     // Generated
     mk_xen_domctl_getdomaininfo,
     mk_xen_domctl_getpageframeinfo3,
@@ -50,7 +73,7 @@ const CTRS: &'static [fn() -> GenericHypercallDef] = &[
     mk_xen_domctl_access_required,
     mk_xen_domctl_audit_p2m,
     mk_xen_domctl_set_virq_handler,
-    mk_xen_domctl_gdbsx_guest_memio,
+    mk_xen_domctl_gdbsx_guestmemio,
     mk_xen_domctl_set_broken_page_p2m,
     mk_xen_domctl_cacheflush,
     mk_xen_domctl_gdbsx_pausevcpu,
@@ -74,6 +97,7 @@ hypercall! {xen_domctl_createdomain, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_createdomain},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.createdomain.ssidref (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.createdomain.handle (xen_domain_handle_t)},
                // It is actually uint32_t, but only 9 bits are used right now
@@ -106,11 +130,335 @@ hypercall! {xen_domctl_createdomain, __HYPERVISOR_domctl,
             }
 }
 
+hypercall! {xen_domctl_scheduler_op_getinfo, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_scheduler_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.scheduler_op.sched_id (uint32_t) [
+                   0,
+                   XEN_SCHEDULER_CREDIT,
+                   XEN_SCHEDULER_CREDIT2,
+                   XEN_SCHEDULER_ARINC653,
+                   XEN_SCHEDULER_RTDS,
+                   XEN_SCHEDULER_NULL
+               ]},
+               hypercall_struct_field!{enum xen_domctl:u.scheduler_op.cmd (uint32_t) [
+                   0,
+                   XEN_DOMCTL_SCHEDOP_getinfo,
+                   XEN_DOMCTL_SCHEDOP_getvcpuinfo
+               ]},
+               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.scheduler_op.u.v.vcpus
+                           (xen_domctl_schedparam_vcpu_t)},
+               hypercall_struct_field!{enum xen_domctl:u.scheduler_op.u.v.nr_vcpus (uint32_t) [0,1]}
+            }
+}
+
+hypercall! {xen_domctl_scheduler_op_putvcpuinfo, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_scheduler_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.scheduler_op.sched_id (uint32_t) [
+                   0,
+                   XEN_SCHEDULER_CREDIT,
+                   XEN_SCHEDULER_CREDIT2,
+                   XEN_SCHEDULER_ARINC653,
+                   XEN_SCHEDULER_RTDS,
+                   XEN_SCHEDULER_NULL
+               ]},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.cmd (uint32_t) = XEN_DOMCTL_SCHEDOP_putvcpuinfo},
+               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.scheduler_op.u.v.vcpus
+                           (xen_domctl_schedparam_vcpu_t)},
+               hypercall_struct_field!{enum xen_domctl:u.scheduler_op.u.v.nr_vcpus (uint32_t) [0, 1]}
+            }
+}
+
+hypercall! {xen_domctl_scheduler_op_putinfo_credit, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_scheduler_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.sched_id (uint32_t) = XEN_SCHEDULER_CREDIT},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.cmd (uint32_t) = XEN_DOMCTL_SCHEDOP_putinfo},
+               hypercall_struct_field!{var xen_domctl:u.scheduler_op.u.credit.weight (uint16_t)},
+               hypercall_struct_field!{var xen_domctl:u.scheduler_op.u.credit.cap (uint16_t)}
+            }
+}
+
+hypercall! {xen_domctl_scheduler_op_putinfo_credit2, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_scheduler_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.sched_id (uint32_t) = XEN_SCHEDULER_CREDIT2},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.cmd (uint32_t) = XEN_DOMCTL_SCHEDOP_putinfo},
+               hypercall_struct_field!{var xen_domctl:u.scheduler_op.u.credit2.weight (uint16_t)},
+               hypercall_struct_field!{var xen_domctl:u.scheduler_op.u.credit2.cap (uint16_t)}
+            }
+}
+
+hypercall! {xen_domctl_scheduler_op_putinfo_rtds, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_scheduler_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.sched_id (uint32_t) = XEN_SCHEDULER_RTDS},
+               hypercall_struct_field!{const xen_domctl:u.scheduler_op.cmd (uint32_t) = XEN_DOMCTL_SCHEDOP_putinfo},
+               hypercall_struct_field!{var xen_domctl:u.scheduler_op.u.rtds.period (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:u.scheduler_op.u.rtds.budget (uint32_t)},
+               hypercall_struct_field!{enum xen_domctl:u.scheduler_op.u.rtds.flags (uint32_t) [0, XEN_DOMCTL_SCHEDRT_extra, 2, 0xFF]}
+            }
+}
+
+hypercall! {xen_domctl_assign_device_pci, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_assign_device},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.assign_device.dev (uint32_t) = XEN_DOMCTL_DEV_PCI},
+               hypercall_struct_field!{var xen_domctl:u.assign_device.flags (uint32_t)},
+               // TODO: Implement separate SBDF type?
+               hypercall_struct_field!{var xen_domctl:u.assign_device.u.pci.machine_sbdf (uint32_t)}
+            }
+}
+
+hypercall! {xen_domctl_assign_device_dts, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_assign_device},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.assign_device.dev (uint32_t) = XEN_DOMCTL_DEV_DT},
+               hypercall_struct_field!{var xen_domctl:u.assign_device.flags (uint32_t)},
+               // TODO: Implement string buffer type
+               hypercall_struct_field!{buf_with_size xen_domctl:u.assign_device.u.dt.path => u.assign_device.u.dt.size}
+            }
+}
+
+hypercall! {xen_domctl_deassign_device_pci, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_deassign_device},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.assign_device.dev (uint32_t) = XEN_DOMCTL_DEV_PCI},
+               hypercall_struct_field!{var xen_domctl:u.assign_device.flags (uint32_t)},
+               // TODO: Implement separate SBDF type?
+               hypercall_struct_field!{var xen_domctl:u.assign_device.u.pci.machine_sbdf (uint32_t)}
+            }
+}
+
+hypercall! {xen_domctl_deassign_device_dts, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_deassign_device},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.assign_device.dev (uint32_t) = XEN_DOMCTL_DEV_DT},
+               hypercall_struct_field!{var xen_domctl:u.assign_device.flags (uint32_t)},
+               // TODO: Implement string buffer type
+               hypercall_struct_field!{buf_with_size xen_domctl:u.assign_device.u.dt.path => u.assign_device.u.dt.size}
+            }
+}
+
+hypercall! {xen_domctl_pt_irq_pci, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{enum xen_domctl:cmd (uint32_t) [XEN_DOMCTL_bind_pt_irq, XEN_DOMCTL_unbind_pt_irq]},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.machine_irq (uint32_t)},
+               hypercall_struct_field!{const xen_domctl:u.bind_pt_irq.irq_type (uint32_t) = pt_irq_type_PT_IRQ_TYPE_PCI},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.pci.bus (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.pci.device (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.pci.intx (uint8_t)}
+            }
+}
+
+hypercall! {xen_domctl_pt_irq_isa, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{enum xen_domctl:cmd (uint32_t) [XEN_DOMCTL_bind_pt_irq, XEN_DOMCTL_unbind_pt_irq]},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.machine_irq (uint32_t)},
+               hypercall_struct_field!{const xen_domctl:u.bind_pt_irq.irq_type (uint32_t) = pt_irq_type_PT_IRQ_TYPE_ISA},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.isa.isa_irq (uint8_t)}
+            }
+}
+
+hypercall! {xen_domctl_pt_irq_msi, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{enum xen_domctl:cmd (uint32_t) [XEN_DOMCTL_bind_pt_irq, XEN_DOMCTL_unbind_pt_irq]},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.machine_irq (uint32_t)},
+               hypercall_struct_field!{const xen_domctl:u.bind_pt_irq.irq_type (uint32_t) = pt_irq_type_PT_IRQ_TYPE_MSI},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.msi.gvec (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.msi.gflags (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.msi.gtable (uint64_t)}
+            }
+}
+
+hypercall! {xen_domctl_pt_irq_msi_translate, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{enum xen_domctl:cmd (uint32_t) [XEN_DOMCTL_bind_pt_irq, XEN_DOMCTL_unbind_pt_irq]},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.machine_irq (uint32_t)},
+               hypercall_struct_field!{const xen_domctl:u.bind_pt_irq.irq_type (uint32_t) = pt_irq_type_PT_IRQ_TYPE_MSI_TRANSLATE},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.msi.gvec (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.msi.gflags (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.msi.gtable (uint64_t)}
+            }
+}
+
+hypercall! {xen_domctl_pt_irq_spi, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{enum xen_domctl:cmd (uint32_t) [XEN_DOMCTL_bind_pt_irq, XEN_DOMCTL_unbind_pt_irq]},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.machine_irq (uint32_t)},
+               hypercall_struct_field!{const xen_domctl:u.bind_pt_irq.irq_type (uint32_t) = pt_irq_type_PT_IRQ_TYPE_SPI},
+               hypercall_struct_field!{var xen_domctl:u.bind_pt_irq.u.spi.spi (uint16_t)}
+            }
+}
+
+hypercall! {xen_domctl_vm_event_op, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_vm_event_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.vm_event_op.op (uint32_t) [
+                   XEN_VM_EVENT_ENABLE,
+                   XEN_VM_EVENT_DISABLE,
+                   XEN_VM_EVENT_RESUME,
+                   XEN_VM_EVENT_GET_VERSION]},
+               hypercall_struct_field!{enum xen_domctl:u.vm_event_op.mode (uint32_t) [
+                   0,
+                   XEN_DOMCTL_VM_EVENT_OP_PAGING,
+                   XEN_DOMCTL_VM_EVENT_OP_MONITOR,
+                   XEN_DOMCTL_VM_EVENT_OP_SHARING]}
+            }
+}
+
+hypercall! {xen_domctl_mem_sharing_op, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_mem_sharing_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.mem_sharing_op.op (uint8_t) [
+                   XEN_DOMCTL_MEM_SHARING_CONTROL as u8,
+                   1]},
+               hypercall_struct_field!{var xen_domctl:u.mem_sharing_op.u.enable (uint8_t)}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_rest, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.monitor_op.op (uint32_t) [
+           XEN_DOMCTL_MONITOR_OP_DISABLE,
+           XEN_DOMCTL_MONITOR_OP_GET_CAPABILITIES,
+           XEN_DOMCTL_MONITOR_OP_EMULATE_EACH_REP,
+           XEN_DOMCTL_MONITOR_OP_CONTROL_REGISTERS,
+           0xFFFF]},
+               hypercall_struct_field!{enum xen_domctl:u.monitor_op.event (uint32_t) [
+                   XEN_DOMCTL_MONITOR_EVENT_WRITE_CTRLREG,
+                   XEN_DOMCTL_MONITOR_EVENT_MOV_TO_MSR,
+                   XEN_DOMCTL_MONITOR_EVENT_SINGLESTEP,
+                   XEN_DOMCTL_MONITOR_EVENT_SOFTWARE_BREAKPOINT,
+                   XEN_DOMCTL_MONITOR_EVENT_GUEST_REQUEST,
+                   XEN_DOMCTL_MONITOR_EVENT_DEBUG_EXCEPTION,
+                   XEN_DOMCTL_MONITOR_EVENT_CPUID,
+                   XEN_DOMCTL_MONITOR_EVENT_PRIVILEGED_CALL,
+                   XEN_DOMCTL_MONITOR_EVENT_INTERRUPT,
+                   XEN_DOMCTL_MONITOR_EVENT_DESC_ACCESS,
+                   XEN_DOMCTL_MONITOR_EVENT_EMUL_UNIMPLEMENTED,
+                   XEN_DOMCTL_MONITOR_EVENT_INGUEST_PAGEFAULT,
+                   XEN_DOMCTL_MONITOR_EVENT_VMEXIT,
+                   XEN_DOMCTL_MONITOR_EVENT_IO
+               ]}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_enable_write_ctrlreg, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.op (uint32_t) = XEN_DOMCTL_MONITOR_OP_ENABLE},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.event (uint32_t) = XEN_DOMCTL_MONITOR_EVENT_WRITE_CTRLREG},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.mov_to_cr.index (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.mov_to_cr.sync (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.mov_to_cr.onchangeonly (uint8_t)}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_enable_mov_to_msr, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.op (uint32_t) = XEN_DOMCTL_MONITOR_OP_ENABLE},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.event (uint32_t) = XEN_DOMCTL_MONITOR_EVENT_MOV_TO_MSR},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.mov_to_msr.msr (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.mov_to_msr.onchangeonly (uint8_t)}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_enable_guest_request, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.op (uint32_t) = XEN_DOMCTL_MONITOR_OP_ENABLE},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.event (uint32_t) = XEN_DOMCTL_MONITOR_EVENT_GUEST_REQUEST},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.guest_request.sync (uint8_t)},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.guest_request.allow_userspace (uint8_t)}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_enable_debug_exception, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.op (uint32_t) = XEN_DOMCTL_MONITOR_OP_ENABLE},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.event (uint32_t) = XEN_DOMCTL_MONITOR_EVENT_DEBUG_EXCEPTION},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.debug_exception.sync (uint8_t)}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_enable_vmexit, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.op (uint32_t) = XEN_DOMCTL_MONITOR_OP_ENABLE},
+               hypercall_struct_field!{const xen_domctl:u.monitor_op.event (uint32_t) = XEN_DOMCTL_MONITOR_EVENT_VMEXIT},
+               hypercall_struct_field!{var xen_domctl:u.monitor_op.u.vmexit.sync (uint8_t)}
+        }
+}
+
+hypercall! {xen_domctl_monitor_op_enable_rest, __HYPERVISOR_domctl,
+            hypercall_arg!{0, complex_struct xen_domctl,
+               hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_monitor_op},
+               hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.monitor_op.event (uint32_t) [
+                   XEN_DOMCTL_MONITOR_EVENT_SINGLESTEP,
+                   XEN_DOMCTL_MONITOR_EVENT_GUEST_REQUEST,
+                   XEN_DOMCTL_MONITOR_EVENT_DEBUG_EXCEPTION,
+                   XEN_DOMCTL_MONITOR_EVENT_VMEXIT
+               ]}
+        }
+}
+
 // (Mostly) autogerated code
 hypercall! {xen_domctl_getdomaininfo, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_getdomaininfo},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.getdomaininfo.domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.getdomaininfo.flags (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.getdomaininfo.tot_pages (uint64_t)},
@@ -139,6 +487,7 @@ hypercall! {xen_domctl_getpageframeinfo3, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_getpageframeinfo3},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.getpageframeinfo3.num (uint64_t)},
                hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.getpageframeinfo3.array (xen_pfn_t)}
             }
@@ -148,6 +497,7 @@ hypercall! {xen_domctl_getnodeaffinity, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_getnodeaffinity},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{buf_wo_size xen_domctl:u.nodeaffinity.nodemap.bitmap},
                hypercall_struct_field!{var xen_domctl:u.nodeaffinity.nodemap.nr_bits (uint32_t)}
             }
@@ -157,6 +507,7 @@ hypercall! {xen_domctl_setnodeaffinity, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_setnodeaffinity},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{buf_wo_size xen_domctl:u.nodeaffinity.nodemap.bitmap},
                hypercall_struct_field!{var xen_domctl:u.nodeaffinity.nodemap.nr_bits (uint32_t)}
             }
@@ -166,6 +517,7 @@ hypercall! {xen_domctl_getvcpuaffinity, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_getvcpuaffinity},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.vcpuaffinity.vcpu (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vcpuaffinity.flags (uint32_t)},
                hypercall_struct_field!{buf_wo_size xen_domctl:u.vcpuaffinity.cpumap_hard.bitmap},
@@ -179,6 +531,7 @@ hypercall! {xen_domctl_setvcpuaffinity, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_setvcpuaffinity},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.vcpuaffinity.vcpu (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vcpuaffinity.flags (uint32_t)},
                hypercall_struct_field!{buf_wo_size xen_domctl:u.vcpuaffinity.cpumap_hard.bitmap},
@@ -192,11 +545,20 @@ hypercall! {xen_domctl_shadow_op, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_shadow_op},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.shadow_op.op (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.shadow_op.op (uint32_t) [
+                   XEN_DOMCTL_SHADOW_OP_OFF,
+                   XEN_DOMCTL_SHADOW_OP_ENABLE,
+                   XEN_DOMCTL_SHADOW_OP_CLEAN,
+                   XEN_DOMCTL_SHADOW_OP_PEEK,
+                   XEN_DOMCTL_SHADOW_OP_GET_ALLOCATION,
+                   XEN_DOMCTL_SHADOW_OP_SET_ALLOCATION,
+                   XEN_DOMCTL_SHADOW_OP_ENABLE_TEST,
+                   XEN_DOMCTL_SHADOW_OP_ENABLE_LOGDIRTY
+               ]},
                hypercall_struct_field!{var xen_domctl:u.shadow_op.mode (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.shadow_op.mb (uint32_t)},
-               hypercall_struct_field!{buf_wo_size xen_domctl:u.shadow_op.dirty_bitmap},
-               hypercall_struct_field!{var xen_domctl:u.shadow_op.pages (uint64_t)},
+               hypercall_struct_field!{buf_with_size xen_domctl:u.shadow_op.dirty_bitmap => u.shadow_op.pages},
                hypercall_struct_field!{var xen_domctl:u.shadow_op.stats.fault_count (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.shadow_op.stats.dirty_count (uint32_t)}
             }
@@ -206,6 +568,7 @@ hypercall! {xen_domctl_max_mem, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_max_mem},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.max_mem.max_memkb (uint64_t)}
             }
 }
@@ -214,6 +577,7 @@ hypercall! {xen_domctl_getvcpucontext, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_getvcpucontext},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.vcpucontext.vcpu (uint32_t)},
                hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vcpucontext.ctxt (vcpu_guest_context_t)}
             }
@@ -223,6 +587,7 @@ hypercall! {xen_domctl_setvcpucontext, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_setvcpucontext},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.vcpucontext.vcpu (uint32_t)},
                hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vcpucontext.ctxt (vcpu_guest_context_t)}
             }
@@ -232,6 +597,7 @@ hypercall! {xen_domctl_getvcpuinfo, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_getvcpuinfo},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.getvcpuinfo.vcpu (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.getvcpuinfo.online (uint8_t)},
                hypercall_struct_field!{var xen_domctl:u.getvcpuinfo.blocked (uint8_t)},
@@ -245,6 +611,7 @@ hypercall! {xen_domctl_max_vcpus, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_max_vcpus},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.max_vcpus.max (uint32_t)}
             }
 }
@@ -253,6 +620,7 @@ hypercall! {xen_domctl_setdomainhandle, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_setdomainhandle},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.setdomainhandle.handle (xen_domain_handle_t)}
             }
 }
@@ -261,6 +629,7 @@ hypercall! {xen_domctl_setdebugging, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_setdebugging},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.setdebugging.enable (uint8_t)}
             }
 }
@@ -269,6 +638,7 @@ hypercall! {xen_domctl_irq_permission, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_irq_permission},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.irq_permission.pirq (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.irq_permission.allow_access (uint8_t)}
             }
@@ -278,6 +648,7 @@ hypercall! {xen_domctl_gsi_permission, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gsi_permission},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.gsi_permission.gsi (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.gsi_permission.flags (uint32_t)}
             }
@@ -287,6 +658,7 @@ hypercall! {xen_domctl_iomem_permission, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_iomem_permission},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.iomem_permission.first_mfn (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.iomem_permission.nr_mfns (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.iomem_permission.allow_access (uint8_t)}
@@ -297,6 +669,7 @@ hypercall! {xen_domctl_ioport_permission, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_ioport_permission},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.ioport_permission.first_port (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.ioport_permission.nr_ports (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.ioport_permission.allow_access (uint8_t)}
@@ -307,6 +680,7 @@ hypercall! {xen_domctl_hypercall_init, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_hypercall_init},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.hypercall_init.gmfn (uint64_t)}
             }
 }
@@ -315,6 +689,7 @@ hypercall! {xen_domctl_settimeoffset, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_settimeoffset},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.settimeoffset.time_offset_seconds (int64_t)}
             }
 }
@@ -323,6 +698,7 @@ hypercall! {xen_domctl_gettscinfo, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gettscinfo},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.tsc_info.tsc_mode (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.tsc_info.gtsc_khz (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.tsc_info.incarnation (uint32_t)},
@@ -334,6 +710,7 @@ hypercall! {xen_domctl_settscinfo, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_settscinfo},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.tsc_info.tsc_mode (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.tsc_info.gtsc_khz (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.tsc_info.incarnation (uint32_t)},
@@ -345,6 +722,7 @@ hypercall! {xen_domctl_gethvmcontext, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gethvmcontext},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{buf_with_size xen_domctl:u.hvmcontext.buffer => u.hvmcontext.size}
             }
 }
@@ -353,6 +731,7 @@ hypercall! {xen_domctl_sethvmcontext, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_sethvmcontext},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{buf_with_size xen_domctl:u.hvmcontext.buffer => u.hvmcontext.size}
             }
 }
@@ -361,10 +740,10 @@ hypercall! {xen_domctl_gethvmcontext_partial, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gethvmcontext_partial},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.hvmcontext_partial.type_ (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.hvmcontext_partial.instance (uint32_t)},
-               hypercall_struct_field!{var xen_domctl:u.hvmcontext_partial.bufsz (uint64_t)},
-               hypercall_struct_field!{buf_wo_size xen_domctl:u.hvmcontext_partial.buffer}
+               hypercall_struct_field!{buf_with_size xen_domctl:u.hvmcontext_partial.buffer => u.hvmcontext_partial.bufsz}
             }
 }
 
@@ -372,6 +751,7 @@ hypercall! {xen_domctl_get_address_size, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_get_address_size},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.address_size.size (uint32_t)}
             }
 }
@@ -380,6 +760,7 @@ hypercall! {xen_domctl_set_address_size, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_address_size},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.address_size.size (uint32_t)}
             }
 }
@@ -388,7 +769,15 @@ hypercall! {xen_domctl_sendtrigger, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_sendtrigger},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.sendtrigger.trigger (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.sendtrigger.trigger (uint32_t) [
+                   XEN_DOMCTL_SENDTRIGGER_NMI,
+                   XEN_DOMCTL_SENDTRIGGER_RESET,
+                   XEN_DOMCTL_SENDTRIGGER_INIT,
+                   XEN_DOMCTL_SENDTRIGGER_POWER,
+                   XEN_DOMCTL_SENDTRIGGER_SLEEP,
+                   0xFF
+               ]},
                hypercall_struct_field!{var xen_domctl:u.sendtrigger.vcpu (uint32_t)}
             }
 }
@@ -397,6 +786,7 @@ hypercall! {xen_domctl_get_device_group, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_get_device_group},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.get_device_group.machine_sbdf (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.get_device_group.max_sdevs (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.get_device_group.num_sdevs (uint32_t)},
@@ -408,6 +798,7 @@ hypercall! {xen_domctl_memory_mapping, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_memory_mapping},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.memory_mapping.first_gfn (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.memory_mapping.first_mfn (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.memory_mapping.nr_mfns (uint64_t)},
@@ -419,6 +810,7 @@ hypercall! {xen_domctl_ioport_mapping, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_ioport_mapping},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.ioport_mapping.first_gport (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.ioport_mapping.first_mport (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.ioport_mapping.nr_ports (uint32_t)},
@@ -430,6 +822,7 @@ hypercall! {xen_domctl_get_ext_vcpucontext, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_get_ext_vcpucontext},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.ext_vcpucontext.vcpu (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.ext_vcpucontext.size (uint32_t)}
             }
@@ -439,6 +832,7 @@ hypercall! {xen_domctl_set_ext_vcpucontext, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_ext_vcpucontext},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.ext_vcpucontext.vcpu (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.ext_vcpucontext.size (uint32_t)}
             }
@@ -448,6 +842,7 @@ hypercall! {xen_domctl_set_target, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_target},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.set_target.target (domid_t)}
             }
 }
@@ -456,6 +851,7 @@ hypercall! {xen_domctl_subscribe, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_subscribe},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.subscribe.port (uint32_t)}
             }
 }
@@ -464,7 +860,11 @@ hypercall! {xen_domctl_debug_op, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_debug_op},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.debug_op.op (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.debug_op.op (uint32_t) [
+                   XEN_DOMCTL_DEBUG_OP_SINGLE_STEP_OFF,
+                   XEN_DOMCTL_DEBUG_OP_SINGLE_STEP_ON,
+                   13, 0xFF]},
                hypercall_struct_field!{var xen_domctl:u.debug_op.vcpu (uint32_t)}
             }
 }
@@ -473,6 +873,7 @@ hypercall! {xen_domctl_access_required, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_access_required},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.access_required.access_required (uint8_t)}
             }
 }
@@ -481,6 +882,7 @@ hypercall! {xen_domctl_audit_p2m, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_audit_p2m},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.audit_p2m.orphans (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.audit_p2m.m2p_bad (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.audit_p2m.p2m_bad (uint64_t)}
@@ -491,14 +893,16 @@ hypercall! {xen_domctl_set_virq_handler, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_virq_handler},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.set_virq_handler.virq (uint32_t)}
             }
 }
 
-hypercall! {xen_domctl_gdbsx_guest_memio, __HYPERVISOR_domctl,
+hypercall! {xen_domctl_gdbsx_guestmemio, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gdbsx_guestmemio},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_guest_memio.pgd3val (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_guest_memio.gva (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_guest_memio.uva (uint64_t)},
@@ -512,6 +916,7 @@ hypercall! {xen_domctl_set_broken_page_p2m, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_broken_page_p2m},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.set_broken_page_p2m.pfn (uint64_t)}
             }
 }
@@ -520,6 +925,7 @@ hypercall! {xen_domctl_cacheflush, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_cacheflush},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.cacheflush.start_pfn (xen_pfn_t)},
                hypercall_struct_field!{var xen_domctl:u.cacheflush.nr_pfns (xen_pfn_t)}
             }
@@ -529,6 +935,7 @@ hypercall! {xen_domctl_gdbsx_pausevcpu, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gdbsx_pausevcpu},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_pauseunp_vcpu.vcpu (uint32_t)}
             }
 }
@@ -537,6 +944,7 @@ hypercall! {xen_domctl_gdbsx_unpausevcpu, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gdbsx_unpausevcpu},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_pauseunp_vcpu.vcpu (uint32_t)}
             }
 }
@@ -545,6 +953,7 @@ hypercall! {xen_domctl_gdbsx_domstatus, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_gdbsx_domstatus},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_domstatus.paused (uint8_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_domstatus.vcpu_id (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.gdbsx_domstatus.vcpu_ev (uint32_t)}
@@ -555,6 +964,7 @@ hypercall! {xen_domctl_setvnumainfo, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_setvnumainfo},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.vnuma.nr_vnodes (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vnuma.nr_vmemranges (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vnuma.nr_vcpus (uint32_t)},
@@ -569,7 +979,12 @@ hypercall! {xen_domctl_psr_cmt_op, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_psr_cmt_op},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.psr_cmt_op.cmd (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.psr_cmt_op.cmd (uint32_t) [
+                   XEN_DOMCTL_PSR_CMT_OP_DETACH,
+                   XEN_DOMCTL_PSR_CMT_OP_ATTACH,
+                   XEN_DOMCTL_PSR_CMT_OP_QUERY_RMID,
+                   0xFF, 17]},
                hypercall_struct_field!{var xen_domctl:u.psr_cmt_op.data (uint32_t)}
             }
 }
@@ -578,7 +993,20 @@ hypercall! {xen_domctl_psr_alloc, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_psr_alloc},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.psr_alloc.cmd (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.psr_alloc.cmd (uint32_t) [
+                   XEN_DOMCTL_PSR_SET_L3_CBM,
+                   XEN_DOMCTL_PSR_GET_L3_CBM,
+                   XEN_DOMCTL_PSR_SET_L3_CODE,
+                   XEN_DOMCTL_PSR_SET_L3_DATA,
+                   XEN_DOMCTL_PSR_GET_L3_CODE,
+                   XEN_DOMCTL_PSR_GET_L3_DATA,
+                   XEN_DOMCTL_PSR_SET_L2_CBM,
+                   XEN_DOMCTL_PSR_GET_L2_CBM,
+                   XEN_DOMCTL_PSR_SET_MBA_THRTL,
+                   XEN_DOMCTL_PSR_GET_MBA_THRTL,
+           0xFF
+               ]},
                hypercall_struct_field!{var xen_domctl:u.psr_alloc.target (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.psr_alloc.data (uint64_t)}
             }
@@ -588,8 +1016,10 @@ hypercall! {xen_domctl_vuart_op, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_vuart_op},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.vuart_op.cmd (uint32_t)},
-               hypercall_struct_field!{var xen_domctl:u.vuart_op.type_ (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.vuart_op.cmd (uint32_t) [XEN_DOMCTL_VUART_OP_INIT, 0xFF
+               ]},
+               hypercall_struct_field!{enum xen_domctl:u.vuart_op.type_ (uint32_t) [XEN_DOMCTL_VUART_TYPE_VPL011, 0xFF]},
                hypercall_struct_field!{var xen_domctl:u.vuart_op.gfn (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.vuart_op.console_domid (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.vuart_op.evtchn (evtchn_port_t)}
@@ -600,7 +1030,16 @@ hypercall! {xen_domctl_vmtrace_op, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_vmtrace_op},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
-               hypercall_struct_field!{var xen_domctl:u.vmtrace_op.cmd (uint32_t)},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
+               hypercall_struct_field!{enum xen_domctl:u.vmtrace_op.cmd (uint32_t) [
+                   0,
+                   XEN_DOMCTL_vmtrace_enable,
+                   XEN_DOMCTL_vmtrace_disable,
+                   XEN_DOMCTL_vmtrace_reset_and_enable,
+                   XEN_DOMCTL_vmtrace_output_position,
+                   XEN_DOMCTL_vmtrace_get_option,
+                   XEN_DOMCTL_vmtrace_set_option
+               ]},
                hypercall_struct_field!{var xen_domctl:u.vmtrace_op.vcpu (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vmtrace_op.key (uint64_t)},
                hypercall_struct_field!{var xen_domctl:u.vmtrace_op.value (uint64_t)}
@@ -611,6 +1050,7 @@ hypercall! {xen_domctl_get_paging_mempool_size, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_get_paging_mempool_size},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.paging_mempool.size (uint64_t)}
             }
 }
@@ -619,6 +1059,7 @@ hypercall! {xen_domctl_set_paging_mempool_size, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_paging_mempool_size},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.paging_mempool.size (uint64_t)}
             }
 }
@@ -627,6 +1068,7 @@ hypercall! {xen_domctl_dt_overlay, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_dt_overlay},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{buf_with_size xen_domctl:u.dt_overlay.overlay_fdt => u.dt_overlay.overlay_fdt_size},
                hypercall_struct_field!{var xen_domctl:u.dt_overlay.overlay_op (uint8_t)}
             }
@@ -636,6 +1078,7 @@ hypercall! {xen_domctl_set_llc_colors, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_set_llc_colors},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.set_llc_colors.num_llc_colors (uint32_t)},
                hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.set_llc_colors.llc_colors (u32)}
             }
@@ -645,6 +1088,7 @@ hypercall! {xen_domctl_get_domain_state, __HYPERVISOR_domctl,
             hypercall_arg!{0, complex_struct xen_domctl,
                hypercall_struct_field!{const xen_domctl:cmd (uint32_t) = XEN_DOMCTL_get_domain_state},
                hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},
+               hypercall_struct_field!{var xen_domctl:domain (domid_t)},
                hypercall_struct_field!{var xen_domctl:u.get_domain_state.state (uint16_t)},
                hypercall_struct_field!{var xen_domctl:u.get_domain_state.caps (uint16_t)},
                hypercall_struct_field!{var xen_domctl:u.get_domain_state.unique_id (uint64_t)}

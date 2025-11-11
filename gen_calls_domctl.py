@@ -236,6 +236,9 @@ def emit_hypercall_def(op: str, sname: str, d: DomctlOpStruct):
     out.write(
         "            hypercall_struct_field!{const xen_domctl:interface_version (uint32_t) = XEN_DOMCTL_INTERFACE_VERSION},\n"
     )
+    out.write(
+        "            hypercall_struct_field!{var xen_domctl:domain (domid_t)},\n"
+    )
     fields_str = [emit_hypercall_field(sname, f) for f in fields]
     out.write(",\n".join(fields_str) + "\n")
     out.write("        }\n")
