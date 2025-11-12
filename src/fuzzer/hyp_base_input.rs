@@ -1,15 +1,16 @@
 /// Base input type for various hypercall inputs
 use crate::fuzzer::generic_hypercall::GenericHypercallInput;
-use crate::fuzzer::hyp_evtchn::generate_evtchn_op;
-use crate::fuzzer::hyp_sysctl::generate_sysctl_op;
-use crate::fuzzer::hyp_hypfs::generate_hypfs_op;
+use crate::fuzzer::hyp_dm_op::generate_dm_op;
 use crate::fuzzer::hyp_domctl::generate_domctl_op;
+use crate::fuzzer::hyp_evtchn::generate_evtchn_op;
+use crate::fuzzer::hyp_hypfs::generate_hypfs_op;
+use crate::fuzzer::hyp_sysctl::generate_sysctl_op;
 
 use libafl::{
     corpus::CorpusId,
     inputs::Input,
     mutators::{MutationResult, Mutator},
-    state::{HasRand, HasMaxSize},
+    state::{HasMaxSize, HasRand},
     Error, SerdeAny,
 };
 use serde::{Deserialize, Serialize};
@@ -32,10 +33,15 @@ impl HypercallInput {
     where
         S: HasRand + HasMaxSize,
     {
-        let ctrs: Vec<fn(state: &mut S) -> GenericHypercallInput> =
-            vec![generate_evtchn_op, generate_sysctl_op, generate_hypfs_op, generate_domctl_op];
+        let ctrs: Vec<fn(state: &mut S) -> GenericHypercallInput> = vec![
+            generate_evtchn_op,
+            generate_sysctl_op,
+            generate_hypfs_op,
+            generate_domctl_op,
+            generate_dm_op,
+        ];
 
-	// Safety: list of ctrs is not empty
+        // Safety: list of ctrs is not empty
         Self::GenericHypercall(state.rand_mut().choose(ctrs).unwrap()(state))
     }
 

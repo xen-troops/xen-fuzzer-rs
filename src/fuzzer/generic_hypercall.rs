@@ -2,7 +2,7 @@
 /// This covers hypercalls that can be data-defined
 use crate::fuzzer::{
     cmd_serializer::{CmdSerializable, CmdSerializer},
-    xen_bindings::{domid_t, evtchn_port_t, xen_pfn_t},
+    xen_bindings::{domid_t, evtchn_port_t, xen_pfn_t, ioservid_t},
 };
 
 use libafl::{
@@ -101,6 +101,9 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::XenDomainHandle(h) => {
                     Self::splice(&mut data, f.offset, h.val.as_slice())
                 }
+                HypercallBufferFieldData::IoServId(p) => {
+                    Self::splice(&mut data, f.offset, p.val.to_le_bytes().as_slice())
+                }
                 HypercallBufferFieldData::U8(u) => {
                     Self::splice(&mut data, f.offset, u.val.to_le_bytes().as_slice())
                 }
@@ -117,6 +120,9 @@ impl HypercallBufferArg {
                     Self::splice(&mut data, f.offset, c.val.to_le_bytes().as_slice())
                 }
                 HypercallBufferFieldData::U8Enum(e) => {
+                    Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
+                }
+                HypercallBufferFieldData::U16Enum(e) => {
                     Self::splice(&mut data, f.offset, e.val.to_le_bytes().as_slice())
                 }
                 HypercallBufferFieldData::U32Enum(e) => {
@@ -171,12 +177,14 @@ impl HypercallBufferArg {
                 HypercallBufferFieldData::EvtchnPort(e) => e.randomize(state),
                 HypercallBufferFieldData::XenPfn(p) => p.randomize(state),
                 HypercallBufferFieldData::XenDomainHandle(h) => h.randomize(state),
+                HypercallBufferFieldData::IoServId(i) => i.randomize(state),
                 HypercallBufferFieldData::U8(u) => u.randomize(state),
                 HypercallBufferFieldData::U16(u) => u.randomize(state),
                 HypercallBufferFieldData::U32(u) => u.randomize(state),
                 HypercallBufferFieldData::U64(u) => u.randomize(state),
                 HypercallBufferFieldData::U32Const(_) => (),
                 HypercallBufferFieldData::U8Enum(e) => e.randomize(state),
+                HypercallBufferFieldData::U16Enum(e) => e.randomize(state),
                 HypercallBufferFieldData::U32Enum(e) => e.randomize(state),
                 HypercallBufferFieldData::I32(i) => i.randomize(state),
                 HypercallBufferFieldData::I64(i) => i.randomize(state),
@@ -208,6 +216,10 @@ impl HypercallBufferArg {
                     h.randomize(state);
                     MutationResult::Mutated
                 }
+                HypercallBufferFieldData::IoServId(i) => {
+                    i.randomize(state);
+                    MutationResult::Mutated
+                }
                 HypercallBufferFieldData::U8(u) => {
                     u.randomize(state);
                     MutationResult::Mutated
@@ -226,6 +238,10 @@ impl HypercallBufferArg {
                 }
                 HypercallBufferFieldData::U32Const(_) => MutationResult::Skipped,
                 HypercallBufferFieldData::U8Enum(e) => {
+                    e.randomize(state);
+                    MutationResult::Mutated
+                }
+                HypercallBufferFieldData::U16Enum(e) => {
                     e.randomize(state);
                     MutationResult::Mutated
                 }
@@ -278,12 +294,14 @@ pub enum HypercallBufferFieldData {
     EvtchnPort(HypercallBufferEvtchnPortField),
     XenPfn(HypercallBufferXenPfnField),
     XenDomainHandle(HypercallBufferXenDomainHandleField),
+    IoServId(HypercallBufferIoServIdField),
     U8(HypercallBufferU8Field),
     U16(HypercallBufferU16Field),
     U32(HypercallBufferU32Field),
     U64(HypercallBufferU64Field),
     U32Const(HypercallBufferU32ConstField),
     U8Enum(HypercallBufferU8EnumField),
+    U16Enum(HypercallBufferU16EnumField),
     U32Enum(HypercallBufferU32EnumField),
     I32(HypercallBufferI32Field),
     I64(HypercallBufferI64Field),
@@ -327,6 +345,12 @@ impl HypercallBufferField {
             }),
         }
     }
+    pub const fn mk_ioservid_t(offset: usize) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::IoServId(HypercallBufferIoServIdField { val: 0 }),
+        }
+    }
     pub const fn mk_uint8_t(offset: usize) -> Self {
         Self {
             offset,
@@ -361,6 +385,15 @@ impl HypercallBufferField {
         Self {
             offset,
             data: HypercallBufferFieldData::U8Enum(HypercallBufferU8EnumField {
+                val: 0,
+                possible_vals,
+            }),
+        }
+    }
+    pub const fn mk_uint16_t_enum(offset: usize, possible_vals: Vec<u16>) -> Self {
+        Self {
+            offset,
+            data: HypercallBufferFieldData::U16Enum(HypercallBufferU16EnumField {
                 val: 0,
                 possible_vals,
             }),
@@ -583,6 +616,44 @@ impl HypercallBufferXenDomainHandleField {
     }
 }
 
+/// ioservid_t field
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferIoServIdField {
+    val: ioservid_t,
+}
+
+impl HypercallBufferIoServIdField {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+
+        // Safety: list is non-empty
+        self.val = rand
+            .choose([
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                12,
+                13,
+                14,
+                15,
+                16,
+		0xFFFF,
+            ])
+            .unwrap();
+    }
+}
+
 ///uint8_t field
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
 pub struct HypercallBufferU8Field {
@@ -661,6 +732,24 @@ pub struct HypercallBufferU8EnumField {
 }
 
 impl HypercallBufferU8EnumField {
+    pub fn randomize<S>(&mut self, state: &mut S)
+    where
+        S: HasRand,
+    {
+        let rand = state.rand_mut();
+        // Safety: expected that user provid non-empty array
+        self.val = *rand.choose(self.possible_vals.as_slice()).unwrap();
+    }
+}
+
+///uint16_t enum value
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, SerdeAny)]
+pub struct HypercallBufferU16EnumField {
+    val: u16,
+    possible_vals: Vec<u16>,
+}
+
+impl HypercallBufferU16EnumField {
     pub fn randomize<S>(&mut self, state: &mut S)
     where
         S: HasRand,

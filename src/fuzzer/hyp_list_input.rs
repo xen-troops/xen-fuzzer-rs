@@ -80,7 +80,9 @@ pub type HypInputListMutators = tuple_list_type!(
     HypRemoveLastEntryMutator,
     HypRemoveRandomEntryMutator,
     HypCrossoverInsertMutator,
-    HypCrossoverReplaceMutator
+    HypCrossoverReplaceMutator,
+    HypInsertMutator,
+    HypReplaceMutator,
 );
 
 pub fn hyp_input_list_mutators() -> HypInputListMutators {
@@ -88,7 +90,9 @@ pub fn hyp_input_list_mutators() -> HypInputListMutators {
         HypRemoveLastEntryMutator,
         HypRemoveRandomEntryMutator,
         HypCrossoverInsertMutator,
-        HypCrossoverReplaceMutator
+        HypCrossoverReplaceMutator,
+	HypInsertMutator,
+	HypReplaceMutator,
     )
 }
 
@@ -240,6 +244,68 @@ where
 }
 
 impl Named for HypCrossoverReplaceMutator {
+    fn name(&self) -> &Cow<'static, str> {
+        &Cow::Borrowed("HypCrossoverReplaceMutator")
+    }
+}
+
+/// Mutator that inserts a random part into the current input.
+#[derive(Debug)]
+pub struct HypInsertMutator;
+
+impl<S> Mutator<HypInputList, S> for HypInsertMutator
+where
+    S: HasCorpus<HypInputList> + HasMaxSize + HasRand,
+{
+    fn mutate(&mut self, state: &mut S, input: &mut HypInputList) -> Result<MutationResult, Error> {
+        let current_idx = match input.0.len() {
+            0 => return Ok(MutationResult::Skipped),
+            len => state
+                .rand_mut()
+                .below(unsafe { NonZero::new_unchecked(len) }),
+        };
+        input.insert_part(current_idx, HypercallInput::generate(state));
+        Ok(MutationResult::Mutated)
+    }
+    #[inline]
+    fn post_exec(&mut self, _state: &mut S, _new_corpus_id: Option<CorpusId>) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl Named for HypInsertMutator {
+    fn name(&self) -> &Cow<'static, str> {
+        &Cow::Borrowed("HypInsertMutator")
+    }
+}
+
+/// Mutator that replaces a random part from the current
+/// [`HypInputlist`] with a new random entry
+#[derive(Debug)]
+pub struct HypReplaceMutator;
+
+impl<S> Mutator<HypInputList, S> for HypReplaceMutator
+where
+    S: HasCorpus<HypInputList> + HasMaxSize + HasRand,
+{
+    fn mutate(&mut self, state: &mut S, input: &mut HypInputList) -> Result<MutationResult, Error> {
+        let current_idx = match input.len() {
+            0 => return Ok(MutationResult::Skipped),
+            len => state
+                .rand_mut()
+                .below(unsafe { NonZero::new_unchecked(len) }),
+        };
+        input.remove_part_at_index(current_idx);
+        input.insert_part(current_idx, HypercallInput::generate(state));
+        Ok(MutationResult::Mutated)
+    }
+    #[inline]
+    fn post_exec(&mut self, _state: &mut S, _new_corpus_id: Option<CorpusId>) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl Named for HypReplaceMutator {
     fn name(&self) -> &Cow<'static, str> {
         &Cow::Borrowed("HypCrossoverReplaceMutator")
     }
