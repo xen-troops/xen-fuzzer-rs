@@ -2,29 +2,43 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    // Tell cargo to look for shared libraries in the specified directory
-    //    println!("cargo:rustc-link-search=/path/to/lib");
+    // Tell cargo to watch for XEN_PUBLIC variable
+    println!("cargo::rerun-if-env-changed=XEN_PUBLIC");
 
-    // Tell cargo to tell rustc to link the system bzip2
-    // shared library.
-    //    println!("cargo:rustc-link-lib=bz2");
+    let headers = [
+        "event_channel.h",
+        "sysctl.h",
+        "hypfs.h",
+        "domctl.h",
+        "hvm/hvm_op.h",
+        "hvm/dm_op.h",
+        "xen.h",
+    ];
+    // Check if user provided path for xen public headers
+    let xen_public_env = env::var("XEN_PUBLIC");
+    let xen_public_s = xen_public_env.unwrap_or_else(|_| {
+	println!("cargo::warning=XEN_PUBLIC environment variable is not specified. Defaulting to 'target/xen/xen/include/public/'");
+	"target/xen/xen/include/public/".to_string()
+    });
 
-    // The bindgen::Builder is the main entry point
-    // to bindgen, and lets you build up options for
-    // the resulting bindings.
+    let xen_public = PathBuf::from(xen_public_s)
+        .canonicalize()
+        .expect("Can't canonicalize path to xen public includes");
+
+    // Generate absolute path to headers
+    let headers = headers.map(|x| {
+        let mut h = xen_public.clone();
+        h.push(x);
+        h.display().to_string()
+    });
+
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
-	.clang_arg("--target=aarch64")
-        // Tell cargo to invalidate the built crate whenever any of the
-    // included header files changed.
-	// .allowlist_item("qemu_plugin.*")
-	// .allowlist_item("g_byte_array.*")
-	// .allowlist_item("g_array_.*")
-	// .allowlist_var("QEMU_PLUGIN_VERSION")
-	// .blocklist_function("qemu_plugin_install")
-	// .blocklist_var("qemu_plugin_version")
+        .headers(headers)
+        .clang_arg("--target=aarch64")
+        .clang_arg("-D__XEN_TOOLS__")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         // Finish the builder and generate the bindings.
         .generate()
