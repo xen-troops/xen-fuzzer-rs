@@ -12,6 +12,7 @@ fn main() {
         "domctl.h",
         "hvm/hvm_op.h",
         "hvm/dm_op.h",
+        "xsm/flask_op.h",
         "xen.h",
     ];
     // Check if user provided path for xen public headers

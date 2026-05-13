@@ -5,6 +5,7 @@ use crate::fuzzer::hyp_domctl::generate_domctl_op;
 use crate::fuzzer::hyp_evtchn::generate_evtchn_op;
 use crate::fuzzer::hyp_hypfs::generate_hypfs_op;
 use crate::fuzzer::hyp_sysctl::generate_sysctl_op;
+use crate::fuzzer::hyp_flask_op::generate_flask_op;
 
 use libafl::{
     corpus::CorpusId,
@@ -39,6 +40,7 @@ impl HypercallInput {
             generate_hypfs_op,
             generate_domctl_op,
             generate_dm_op,
+            generate_flask_op,
         ];
 
         // Safety: list of ctrs is not empty
