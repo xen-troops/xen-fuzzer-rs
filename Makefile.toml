@@ -47,9 +47,9 @@ dependencies = ["checkout_xtf"]
 command = "make"
 args = ["-C", "${XTF_DIR}",
        "ARCH=${XEN_TARGET_ARCH}",
-       "CONFIG_GICV2=y",
-       "CONFIG_GICV2_DIST_ADDRESS=0x0000000008000000",
-       "CONFIG_GICV2_CPU_ADDRESS=0x0000000008010000",
+       "CONFIG_GICV3=y",
+       "CONFIG_GICV3_DIST_ADDRESS=0x0000000008000000",
+       "CONFIG_GICV3_RDIST_ADDRESS=0x00000000080a0000",
        "CONFIG_LIBAFL=y"]
 
 [tasks.run_vgic]

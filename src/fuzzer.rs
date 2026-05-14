@@ -98,7 +98,7 @@ fn create_args(cli: &Cli) -> Vec<String> {
         "-accel",
         "tcg",
         "-machine",
-        "virt,virtualization=yes,acpi=off,gic-version=2",
+        "virt,virtualization=yes,acpi=off,gic-version=3",
         "-L",
         "target/debug/qemu-libafl-bridge/pc-bios",
         "-m",

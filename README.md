@@ -110,7 +110,7 @@ to reproduce a specific machine setup). This is possible with `raw` mode:
 
 ```
 target/debug/xen_fuzzer raw -accel tcg \
-  -machine virt,virtualization=yes,acpi=off,gic-version=2  -m 4G \
+  -machine virt,virtualization=yes,acpi=off,gic-version=3  -m 4G \
   -L  target/debug/qemu-libafl-bridge/pc-bios  \
   -nographic \
   -cpu max \
