@@ -6,6 +6,7 @@ fn main() {
     println!("cargo::rerun-if-env-changed=XEN_PUBLIC");
 
     let headers = [
+	"../xen/stdint.h",
         "event_channel.h",
         "sysctl.h",
         "hypfs.h",

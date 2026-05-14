@@ -968,9 +968,9 @@ hypercall! {xen_domctl_setvnumainfo, __HYPERVISOR_domctl,
                hypercall_struct_field!{var xen_domctl:u.vnuma.nr_vnodes (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vnuma.nr_vmemranges (uint32_t)},
                hypercall_struct_field!{var xen_domctl:u.vnuma.nr_vcpus (uint32_t)},
-               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vdistance (__u_int)},
-               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vcpu_to_vnode (__u_int)},
-               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vnode_to_pnode (__u_int)},
+               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vdistance (u32)},
+               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vcpu_to_vnode (u32)},
+               hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vnode_to_pnode (u32)},
                hypercall_struct_field!{typed_buf_wo_size xen_domctl:u.vnuma.vmemrange (xen_vmemrange_t)}
             }
 }
